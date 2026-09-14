@@ -33,7 +33,6 @@ from market_forecaster.ui.validation_panel import render_validation_panel
 from market_forecaster.ui.regime_panel import render_regime_panel
 from market_forecaster.ui.xgb_panel import render_xgb_panel
 from market_forecaster.ui.consensus_panel import render_production_consensus_panel
-from market_forecaster.ui.options_panel import render_options_flow_panel
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -46,7 +45,6 @@ from market_forecaster.core.ensemble import run_ensemble_forecast
 from market_forecaster.core.sentiment import SentimentAnalyzer
 from market_forecaster.core.seasonal import SeasonalAnalyzer
 from market_forecaster.core.signals import compute_basic_signal, compute_integrated_signal
-from market_forecaster.core.options_flow_v2 import fetch_options_flow_v2, persist_options_snapshot
 
 # AutoTune
 from market_forecaster.autotune.tuner import run_autotune
@@ -198,20 +196,6 @@ with tab_forecast:
         sentiment_data = None
         seasonal_signal = None
         seasonal_analysis = None
-        options_flow_data = None
-        st.session_state.pop("options_flow_v2", None)
-
-        if req.use_options:
-            with st.spinner("Analyzing options flow..."):
-                try:
-                    option_close = get_close_series(stock_df).dropna()
-                    option_spot = float(option_close.iloc[-1]) if not option_close.empty else None
-                    options_flow_data = fetch_options_flow_v2(req.ticker, spot=option_spot)
-                    if options_flow_data.get("available"):
-                        persist_options_snapshot(options_flow_data)
-                    st.session_state["options_flow_v2"] = options_flow_data
-                except Exception as e:
-                    st.warning(f"Options flow error: {e}")
 
         if req.use_ensemble:
             with st.spinner("Running ensemble models..."):
@@ -247,13 +231,12 @@ with tab_forecast:
         basic_signal = compute_basic_signal(pattern_scores, stock_df, forecast)
 
         integrated = None
-        if any([ensemble_result, sentiment_data, seasonal_signal, options_flow_data and options_flow_data.get("available")]):
+        if any([ensemble_result, sentiment_data, seasonal_signal]):
             integrated = compute_integrated_signal(
                 pattern_scores, stock_df, forecast,
                 ensemble_result=ensemble_result,
                 sentiment_data=sentiment_data,
                 seasonal_signal=seasonal_signal,
-                options_data=options_flow_data,
             )
 
         # ===========================================================
@@ -368,7 +351,6 @@ if tab_ensemble:
     with tab_ensemble:
         st.header("📊 Ensemble Model Forecasting")
         result = st.session_state.get("ensemble_result")
-        render_options_flow_panel(st.session_state.get("options_flow_v2"), st.session_state.get("stock_df"))
         render_regime_panel(st.session_state.get("stock_df"), result)
         render_xgb_panel(st.session_state.get("stock_df"), req.ticker, req.interval)
         render_production_consensus_panel(st.session_state.get("ensemble_result"), st.session_state.get("xgb_multihorizon_result"), req.ticker)

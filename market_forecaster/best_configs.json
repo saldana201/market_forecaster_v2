@@ -14,5 +14,21 @@
       "folds": 2
     },
     "last_updated": "2026-09-14T04:13:24.961579"
+  },
+  "OUST": {
+    "params": {
+      "growth_mode": "linear",
+      "seasonality_mode": "multiplicative",
+      "cps": 0.11,
+      "sps": 11.0
+    },
+    "metrics": {
+      "mape_mean": 10.144446191968072,
+      "mape_std": 0.0,
+      "stability_score": 10.144446191968072,
+      "dir_accuracy": 44.827586206896555,
+      "folds": 1
+    },
+    "last_updated": "2026-09-14T13:58:09.048167"
   }
 }

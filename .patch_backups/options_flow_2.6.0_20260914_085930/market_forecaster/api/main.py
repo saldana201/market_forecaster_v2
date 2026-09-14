@@ -20,7 +20,6 @@ from market_forecaster.api.routes import model_zoo as model_zoo_routes
 from market_forecaster.api.routes import regime as regime_routes
 from market_forecaster.api.routes import xgb as xgb_routes
 from market_forecaster.api.routes import consensus as consensus_routes
-from market_forecaster.api.routes import options as options_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
 from market_forecaster.config import DISCLAIMER, __version__
@@ -60,7 +59,6 @@ app.include_router(model_zoo_routes.router, prefix="/api/v1", tags=["Model Zoo"]
 app.include_router(regime_routes.router, prefix="/api/v1", tags=["Regime"], dependencies=protected)
 app.include_router(xgb_routes.router, prefix="/api/v1", tags=["XGBoost"], dependencies=protected)
 app.include_router(consensus_routes.router, prefix="/api/v1", tags=["Consensus"], dependencies=protected)
-app.include_router(options_routes.router, prefix="/api/v1", tags=["Options Flow"], dependencies=protected)
 
 
 @app.exception_handler(RequestValidationError)

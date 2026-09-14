@@ -122,7 +122,6 @@ def compute_integrated_signal(
     ensemble_result: Optional[dict] = None,
     sentiment_data: Optional[dict] = None,
     seasonal_signal: Optional[dict] = None,
-    options_data: Optional[dict] = None,
     window: int = 1,
 ) -> SignalResult:
     """
@@ -171,21 +170,16 @@ def compute_integrated_signal(
         pass
     scores["technical"] = np.clip(tech_score, -1, 1)
 
-    # Options score. Prefer the current observed Options Flow v2 snapshot.
-    # Historical options regressors are only a fallback when real history exists;
-    # no synthetic options history is created.
+    # Options score
     options_score = 0.0
     try:
-        if options_data and options_data.get("available"):
-            options_score = float(options_data.get("options_signal_score", 0.0))
-        else:
-            if "options_sentiment_scaled" in forecast_df.columns:
-                options_score += float(forecast_df["options_sentiment_scaled"].iloc[-window:].mean()) * 0.5
-            if "put_call_ratio_scaled" in forecast_df.columns:
-                options_score -= float(forecast_df["put_call_ratio_scaled"].iloc[-window:].mean()) * 0.5
+        if "options_sentiment_scaled" in forecast_df.columns:
+            options_score += float(forecast_df["options_sentiment_scaled"].iloc[-window:].mean()) * 0.5
+        if "put_call_ratio_scaled" in forecast_df.columns:
+            options_score -= float(forecast_df["put_call_ratio_scaled"].iloc[-window:].mean()) * 0.5
     except Exception:
         pass
-    scores["options"] = float(np.clip(options_score, -1, 1))
+    scores["options"] = np.clip(options_score, -1, 1)
 
     # Ensemble score
     if ensemble_result and "ensemble" in ensemble_result:
