@@ -1,0 +1,14 @@
+Market Forecaster Production Consensus Patch 2.5.0
+
+NEW / UPDATED PAYLOAD FILES
+- market_forecaster/core/xgb_multihorizon.py
+- market_forecaster/core/production_consensus.py
+- market_forecaster/ui/xgb_panel.py
+- market_forecaster/ui/consensus_panel.py
+- market_forecaster/api/routes/consensus.py
+- market_forecaster/tests/test_production_consensus.py
+
+INSTALLER PATCHES
+- market_forecaster/app.py (adds Production Consensus panel)
+- market_forecaster/api/main.py (adds authenticated Consensus route)
+- market_forecaster/config.py (version -> 2.5.0)

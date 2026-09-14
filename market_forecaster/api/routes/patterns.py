@@ -1,12 +1,13 @@
-"""
-Market Forecaster — Patterns API Route
-"""
+"""Current chart-pattern snapshot endpoint."""
+
+from __future__ import annotations
 
 import logging
+
 from fastapi import APIRouter, HTTPException, Query
 
 from market_forecaster.api.schemas import PatternResponseSchema
-from market_forecaster.config import BULLISH_PATTERNS, BEARISH_PATTERNS
+from market_forecaster.config import BEARISH_PATTERNS, BULLISH_PATTERNS
 from market_forecaster.core.data import fetch_stock_data
 from market_forecaster.core.indicators import add_technical_indicators
 from market_forecaster.core.patterns import detect_chart_patterns
@@ -16,23 +17,16 @@ router = APIRouter()
 
 
 @router.get("/patterns/{ticker}", response_model=PatternResponseSchema)
-async def get_patterns(
-    ticker: str,
-    period: str = Query("1y", description="History period"),
-):
-    """Get chart pattern analysis for a ticker."""
+async def get_patterns(ticker: str, period: str = Query("1y")):
+    symbol = ticker.upper().strip()
     try:
-        ticker = ticker.upper().strip()
-        stock_df = fetch_stock_data(ticker, period, "1d")
+        stock_df = fetch_stock_data(symbol, period, "1d")
         if stock_df.empty:
-            raise HTTPException(404, f"No data for {ticker}")
-
+            raise HTTPException(404, f"No data for {symbol}")
         stock_df = add_technical_indicators(stock_df)
         scores = detect_chart_patterns(stock_df)
-
         bull = sum(float(scores.get(p, 0) or 0) for p in BULLISH_PATTERNS)
         bear = sum(float(scores.get(p, 0) or 0) for p in BEARISH_PATTERNS)
-
         if bull == 0 and bear == 0:
             bias = "Neutral"
         elif bull > bear * 1.2:
@@ -41,26 +35,15 @@ async def get_patterns(
             bias = "Bearish"
         else:
             bias = "Mixed"
-
-        bullish_strong = [
-            {"pattern": p, "score": float(scores.get(p, 0))}
-            for p in BULLISH_PATTERNS if float(scores.get(p, 0) or 0) >= 0.7
-        ]
-        bearish_strong = [
-            {"pattern": p, "score": float(scores.get(p, 0))}
-            for p in BEARISH_PATTERNS if float(scores.get(p, 0) or 0) >= 0.7
-        ]
-
         return PatternResponseSchema(
-            ticker=ticker,
+            ticker=symbol,
             scores=scores,
             bias=bias,
-            bullish_strong=bullish_strong,
-            bearish_strong=bearish_strong,
+            bullish_strong=[{"pattern": p, "score": float(scores[p])} for p in BULLISH_PATTERNS if float(scores.get(p, 0) or 0) >= 0.7],
+            bearish_strong=[{"pattern": p, "score": float(scores[p])} for p in BEARISH_PATTERNS if float(scores.get(p, 0) or 0) >= 0.7],
         )
-
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Pattern analysis failed for {ticker}: {e}", exc_info=True)
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("pattern_analysis_failed ticker=%s", symbol)
+        raise HTTPException(500, "Pattern analysis failed")

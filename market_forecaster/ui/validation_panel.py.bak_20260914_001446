@@ -1,0 +1,107 @@
+"""Streamlit Production Validation / Model Zoo panel."""
+from __future__ import annotations
+
+import pandas as pd
+import streamlit as st
+
+from market_forecaster.core.model_zoo import run_model_zoo
+
+
+def _display_name(name: str) -> str:
+    return {
+        "naive": "Naive",
+        "prophet": "Prophet",
+        "arima": "ARIMA",
+        "ridge": "Ridge",
+        "random_forest": "Random Forest",
+    }.get(name, name)
+
+
+def render_validation_panel(req, stock_df: pd.DataFrame | None) -> None:
+    st.subheader("Production Validation Lab")
+    st.caption(
+        "Compare Prophet, ARIMA, Ridge and Random Forest against a mandatory Naive baseline "
+        "on identical expanding-window folds. A small embargo gap is excluded before each test window."
+    )
+
+    if stock_df is None or stock_df.empty:
+        st.info("Run a forecast first to load market history, then return here to run the Model Zoo.")
+        return
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        folds = st.slider("Validation folds", 3, 8, 5, key="validation_zoo_folds")
+    with c2:
+        test_size = st.slider("Rows per test fold", 5, 40, min(20, max(5, req.holdout_days)), key="validation_zoo_test")
+    with c3:
+        gap = st.slider("Embargo gap (rows)", 0, 10, 1, key="validation_zoo_gap")
+
+    if not st.button("Run Production Model Zoo", type="primary", key="run_production_model_zoo"):
+        return
+
+    with st.spinner("Running identical walk-forward folds across models..."):
+        try:
+            result = run_model_zoo(
+                stock_df,
+                test_size=test_size,
+                n_folds=folds,
+                gap=gap,
+                prophet_kwargs=req.to_prophet_kwargs(),
+            )
+        except Exception as exc:
+            st.error(f"Validation Lab failed: {exc}")
+            return
+
+    leaderboard = result.leaderboard.copy()
+    leaderboard["model"] = leaderboard["model"].map(_display_name)
+
+    winner = _display_name(result.winner) if result.winner else "None yet"
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("Deployable winner", winner)
+    with m2:
+        st.metric("Naive sMAPE", f"{result.naive_smape:.2f}%")
+    with m3:
+        st.metric("Folds run", result.config["n_folds_run"])
+
+    display = leaderboard.rename(columns={
+        "rank": "Rank",
+        "model": "Model",
+        "smape_mean": "sMAPE Mean %",
+        "smape_std": "sMAPE Std %",
+        "smape_worst": "Worst Fold %",
+        "mase_mean": "MASE",
+        "directional_accuracy": "Direction %",
+        "fold_win_rate_vs_naive": "Fold Wins vs Naive %",
+        "fold_coverage_pct": "Fold Coverage %",
+        "improvement_vs_naive_pct": "Improvement vs Naive %",
+        "improvement_ci_low_pct": "Improvement CI Low %",
+        "improvement_ci_high_pct": "Improvement CI High %",
+        "production_gate": "Gate",
+    })
+    cols = [
+        "Rank", "Model", "Gate", "sMAPE Mean %", "sMAPE Std %", "Worst Fold %",
+        "MASE", "Direction %", "Fold Coverage %", "Fold Wins vs Naive %", "Improvement vs Naive %",
+        "Improvement CI Low %", "Improvement CI High %",
+    ]
+    st.dataframe(display[[c for c in cols if c in display.columns]], use_container_width=True, hide_index=True)
+
+    if result.winner:
+        st.success(
+            f"{winner} passed the current production gate: complete fold coverage, at least 2% mean sMAPE "
+            "improvement vs Naive, wins at least 60% of paired folds, and retains at least 50% directional accuracy."
+        )
+    else:
+        st.warning(
+            "No model passed the production gate. Keep the Naive baseline as the benchmark and do not "
+            "promote a more complex model just because it ranked first."
+        )
+
+    with st.expander("Fold-level evidence"):
+        fold_df = result.folds.copy()
+        fold_df["model"] = fold_df["model"].map(_display_name)
+        st.dataframe(fold_df, use_container_width=True, hide_index=True)
+
+    with st.expander("Validation rules"):
+        for note in result.notes:
+            st.markdown(f"- {note}")

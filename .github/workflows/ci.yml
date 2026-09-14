@@ -1,0 +1,38 @@
+name: market-forecaster-ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            market_forecaster/requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Compile
+        run: python -m compileall -q market_forecaster
+      - name: Ruff correctness checks
+        run: ruff check market_forecaster
+      - name: Unit tests
+        env:
+          MARKET_FORECASTER_ENV: test
+        run: pytest
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API container
+        run: docker build -f market_forecaster/Dockerfile -t market-forecaster:${{ github.sha }} .

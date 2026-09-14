@@ -64,28 +64,52 @@ def signal_card(signal: str, score: float, confidence: float, label: str = "Trad
 # Component score breakdown bar chart
 # -------------------------------------------------------------------
 def component_breakdown(components: dict):
-    """Show a horizontal breakdown of signal component scores."""
+    """Show a horizontal breakdown of numeric signal component scores.
+
+    Signal metadata may occasionally contain descriptive strings. Production UI
+    must never crash because of a non-numeric diagnostic value, so only finite
+    numeric values are charted here.
+    """
+    import math
     import plotly.graph_objects as go
 
     if not components:
         return
 
+    numeric_items = []
+    for key, value in components.items():
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric):
+            numeric_items.append((str(key), numeric))
+
+    if not numeric_items:
+        st.caption("No numeric signal-component scores are available for this run.")
+        return
+
+    labels = [key for key, _ in numeric_items]
+    values = [value for _, value in numeric_items]
+
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=list(components.values()),
-        y=list(components.keys()),
+        x=values,
+        y=labels,
         orientation="h",
         marker_color=[
-            "#22c55e" if v > 0 else "#ef4444" if v < 0 else "#9ca3af"
-            for v in components.values()
+            "#22c55e" if value > 0 else "#ef4444" if value < 0 else "#9ca3af"
+            for value in values
         ],
-        text=[f"{v:+.2f}" for v in components.values()],
+        text=[f"{value:+.2f}" for value in values],
         textposition="outside",
     ))
+    max_abs = max(1.0, max(abs(value) for value in values))
+    axis_limit = min(2.5, max_abs * 1.2)
     fig.update_layout(
-        height=max(200, len(components) * 40),
+        height=max(200, len(values) * 40),
         margin=dict(l=10, r=40, t=10, b=10),
-        xaxis=dict(range=[-1.2, 1.2], title="Score"),
+        xaxis=dict(range=[-axis_limit, axis_limit], title="Score"),
         yaxis=dict(autorange="reversed"),
         showlegend=False,
     )

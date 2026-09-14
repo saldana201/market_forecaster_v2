@@ -1,0 +1,289 @@
+"""Production model-zoo benchmarking on identical walk-forward folds.
+
+This module intentionally compares classic models before adding more complex
+architectures. Every candidate sees the same price history, test windows, and
+embargo gap. The Naive model is a first-class baseline and must be beaten.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
+
+from market_forecaster.core.validation import (
+    expanding_window_splits,
+    forecast_metrics,
+    paired_fold_improvement,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _close_series(df: pd.DataFrame) -> pd.Series:
+    """Extract Close without importing a network provider module."""
+    for col in ("Close", "Adj Close"):
+        if col in df.columns:
+            obj = df[col]
+            if isinstance(obj, pd.DataFrame):
+                obj = obj.iloc[:, 0]
+            return pd.to_numeric(obj, errors="coerce")
+    return pd.Series(dtype="float64")
+
+try:
+    from statsmodels.tsa.arima.model import ARIMA
+    ARIMA_AVAILABLE = True
+except ImportError:
+    ARIMA_AVAILABLE = False
+
+try:
+    from prophet import Prophet
+    PROPHET_AVAILABLE = True
+except ImportError:
+    PROPHET_AVAILABLE = False
+
+
+@dataclass
+class ModelZooResult:
+    leaderboard: pd.DataFrame
+    folds: pd.DataFrame
+    winner: Optional[str]
+    naive_smape: float
+    config: dict
+    notes: list[str]
+
+
+def _lag_matrix(values: np.ndarray, lookback: int) -> tuple[np.ndarray, np.ndarray]:
+    values = np.asarray(values, dtype=float)
+    X, y = [], []
+    for idx in range(lookback, len(values)):
+        X.append(values[idx - lookback:idx])
+        y.append(values[idx])
+    return np.asarray(X), np.asarray(y)
+
+
+def _recursive_predict(model, scaler: StandardScaler, train_y: np.ndarray, lookback: int, steps: int) -> np.ndarray:
+    current = np.asarray(train_y, dtype=float).copy()
+    out: list[float] = []
+    for _ in range(steps):
+        row = current[-lookback:].reshape(1, -1)
+        pred = float(model.predict(scaler.transform(row))[0])
+        out.append(pred)
+        current = np.append(current, pred)
+    return np.asarray(out)
+
+
+def _predict_naive(train_y: np.ndarray, steps: int) -> np.ndarray:
+    return np.repeat(float(train_y[-1]), steps)
+
+
+def _predict_ridge(train_y: np.ndarray, steps: int, lookback: int) -> Optional[np.ndarray]:
+    if len(train_y) < lookback + 20:
+        return None
+    X, y = _lag_matrix(train_y, lookback)
+    scaler = StandardScaler().fit(X)
+    model = Ridge(alpha=1.0)
+    model.fit(scaler.transform(X), y)
+    return _recursive_predict(model, scaler, train_y, lookback, steps)
+
+
+def _predict_rf(train_y: np.ndarray, steps: int, lookback: int) -> Optional[np.ndarray]:
+    if len(train_y) < lookback + 20:
+        return None
+    X, y = _lag_matrix(train_y, lookback)
+    scaler = StandardScaler().fit(X)
+    model = RandomForestRegressor(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=5,
+        random_state=42,
+        n_jobs=-1,
+    )
+    model.fit(scaler.transform(X), y)
+    return _recursive_predict(model, scaler, train_y, lookback, steps)
+
+
+def _predict_arima(train_y: np.ndarray, steps: int) -> Optional[np.ndarray]:
+    if not ARIMA_AVAILABLE or len(train_y) < 40:
+        return None
+    try:
+        fitted = ARIMA(train_y, order=(5, 1, 0)).fit()
+        return np.asarray(fitted.forecast(steps=steps), dtype=float)
+    except Exception as exc:
+        logger.warning("model_zoo_arima_failed error=%s", exc)
+        return None
+
+
+def _predict_prophet(
+    train_dates: pd.Series,
+    train_y: np.ndarray,
+    test_dates: pd.Series,
+    prophet_kwargs: Optional[dict],
+) -> Optional[np.ndarray]:
+    if not PROPHET_AVAILABLE or len(train_y) < 60:
+        return None
+    try:
+        kwargs = dict(prophet_kwargs or {})
+        # The fair Model Zoo uses a linear Prophet price baseline. Logistic growth
+        # requires fold-specific cap/floor engineering and belongs in AutoTune.
+        kwargs["growth"] = "linear"
+        kwargs.setdefault("changepoint_prior_scale", 0.10)
+        kwargs.setdefault("seasonality_prior_scale", 8.0)
+        kwargs.setdefault("seasonality_mode", "multiplicative")
+        model = Prophet(**kwargs)
+        model.fit(pd.DataFrame({"ds": pd.to_datetime(train_dates).to_numpy(), "y": train_y}))
+        future = pd.DataFrame({"ds": pd.to_datetime(test_dates).to_numpy()})
+        return model.predict(future)["yhat"].to_numpy(dtype=float)
+    except Exception as exc:
+        logger.warning("model_zoo_prophet_failed error=%s", exc)
+        return None
+
+
+def run_model_zoo(
+    stock_df: pd.DataFrame,
+    *,
+    test_size: int = 20,
+    n_folds: int = 5,
+    gap: int = 1,
+    lookback: int = 20,
+    prophet_kwargs: Optional[dict] = None,
+) -> ModelZooResult:
+    """Compare Naive/Prophet/ARIMA/Ridge/RF on identical chronological folds."""
+    if stock_df is None or stock_df.empty or "Date" not in stock_df.columns:
+        raise ValueError("Model Zoo requires a non-empty market frame with Date")
+
+    close = _close_series(stock_df)
+    frame = pd.DataFrame({
+        "Date": pd.to_datetime(stock_df["Date"], errors="coerce"),
+        "Close": pd.to_numeric(close, errors="coerce"),
+    }).dropna().sort_values("Date").drop_duplicates("Date", keep="last").reset_index(drop=True)
+
+    min_train = max(120, lookback + 40)
+    splits = list(expanding_window_splits(
+        len(frame),
+        test_size=test_size,
+        n_splits=n_folds,
+        gap=gap,
+        min_train_size=min_train,
+    ))
+    if len(splits) < 2:
+        raise ValueError(
+            f"Not enough history for production Model Zoo: need at least two folds "
+            f"after min_train={min_train}, test_size={test_size}, gap={gap}."
+        )
+
+    rows: list[dict] = []
+    models = ("naive", "prophet", "arima", "ridge", "random_forest")
+
+    for split in splits:
+        train = frame.iloc[split.train_start:split.train_end]
+        test = frame.iloc[split.test_start:split.test_end]
+        train_y = train["Close"].to_numpy(dtype=float)
+        actual = test["Close"].to_numpy(dtype=float)
+        steps = len(test)
+
+        predictions: dict[str, Optional[np.ndarray]] = {
+            "naive": _predict_naive(train_y, steps),
+            "prophet": _predict_prophet(train["Date"], train_y, test["Date"], prophet_kwargs),
+            "arima": _predict_arima(train_y, steps),
+            "ridge": _predict_ridge(train_y, steps, lookback),
+            "random_forest": _predict_rf(train_y, steps, lookback),
+        }
+
+        for name in models:
+            pred = predictions[name]
+            if pred is None or len(pred) != steps or not np.isfinite(pred).all():
+                continue
+            metrics = forecast_metrics(train_y, actual, pred)
+            rows.append({
+                "fold": split.fold,
+                "model": name,
+                "train_end": train["Date"].iloc[-1],
+                "test_start": test["Date"].iloc[0],
+                "test_end": test["Date"].iloc[-1],
+                "train_rows": len(train),
+                "test_rows": len(test),
+                "gap": split.gap,
+                **metrics,
+            })
+
+    folds = pd.DataFrame(rows)
+    if folds.empty or "naive" not in set(folds["model"]):
+        raise RuntimeError("Model Zoo could not produce a Naive baseline")
+
+    naive_by_fold = folds[folds["model"] == "naive"].set_index("fold")["smape"]
+    naive_mean = float(naive_by_fold.mean())
+
+    leaderboard_rows: list[dict] = []
+    for name, group in folds.groupby("model", sort=False):
+        group = group.sort_values("fold")
+        aligned = group.set_index("fold")["smape"].reindex(naive_by_fold.index)
+        evidence = paired_fold_improvement(aligned.to_numpy(), naive_by_fold.to_numpy())
+        wins = (aligned < naive_by_fold).dropna()
+        win_rate = float(wins.mean() * 100) if len(wins) else np.nan
+        coverage = float(len(group) / len(naive_by_fold) * 100) if len(naive_by_fold) else np.nan
+        smape_mean = float(group["smape"].mean())
+        smape_std = float(group["smape"].std(ddof=0))
+        improvement = evidence["mean_improvement_pct"]
+
+        # Conservative deployment gate: a model has to beat Naive on average,
+        # win most paired folds, and retain at least coin-flip directional skill.
+        gate = (
+            name != "naive"
+            and np.isfinite(improvement) and improvement >= 2.0
+            and np.isfinite(win_rate) and win_rate >= 60.0
+            and np.isfinite(coverage) and coverage >= 100.0
+            and float(group["directional_accuracy"].mean()) >= 50.0
+        )
+        leaderboard_rows.append({
+            "model": name,
+            "folds": len(group),
+            "smape_mean": smape_mean,
+            "smape_std": smape_std,
+            "smape_worst": float(group["smape"].max()),
+            "mae_mean": float(group["mae"].mean()),
+            "rmse_mean": float(group["rmse"].mean()),
+            "mase_mean": float(group["mase"].mean()),
+            "directional_accuracy": float(group["directional_accuracy"].mean()),
+            "terminal_direction_accuracy": float(group["terminal_direction_correct"].mean() * 100),
+            "fold_win_rate_vs_naive": win_rate,
+            "fold_coverage_pct": coverage,
+            "improvement_vs_naive_pct": improvement,
+            "improvement_ci_low_pct": evidence["ci_low_pct"],
+            "improvement_ci_high_pct": evidence["ci_high_pct"],
+            "stability_score": smape_mean + 0.25 * smape_std,
+            "production_gate": "PASS" if gate else ("BASELINE" if name == "naive" else "HOLD"),
+        })
+
+    leaderboard = pd.DataFrame(leaderboard_rows)
+    leaderboard = leaderboard.sort_values(["stability_score", "smape_mean"]).reset_index(drop=True)
+    leaderboard.insert(0, "rank", np.arange(1, len(leaderboard) + 1))
+
+    passing = leaderboard[leaderboard["production_gate"] == "PASS"]
+    winner = str(passing.iloc[0]["model"]) if not passing.empty else None
+    notes = [
+        "All candidates use identical expanding-window folds and an embargo gap.",
+        "The Naive last-price forecast is a mandatory baseline; models that do not beat it remain HOLD.",
+        "The bootstrap interval is descriptive because fold counts are intentionally small and chronological.",
+        "LSTM is excluded from the production benchmark by default because deterministic, CPU-friendly baselines should win first.",
+    ]
+
+    return ModelZooResult(
+        leaderboard=leaderboard,
+        folds=folds.sort_values(["fold", "model"]).reset_index(drop=True),
+        winner=winner,
+        naive_smape=naive_mean,
+        config={
+            "test_size": int(test_size),
+            "n_folds_requested": int(n_folds),
+            "n_folds_run": int(folds["fold"].nunique()),
+            "gap": int(gap),
+            "lookback": int(lookback),
+        },
+        notes=notes,
+    )

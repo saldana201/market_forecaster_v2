@@ -45,12 +45,12 @@ def compute_basic_signal(
             rsi = float(rsi_col.iloc[-window:].mean())
             if rsi < 30:
                 score += 1.0
-                components["rsi"] = "oversold"
+                components["rsi"] = 1.0
             elif rsi > 70:
                 score -= 1.0
-                components["rsi"] = "overbought"
+                components["rsi"] = -1.0
             else:
-                components["rsi"] = f"{rsi:.0f}"
+                components["rsi"] = 0.0
     except Exception:
         pass
 
@@ -62,7 +62,7 @@ def compute_basic_signal(
                 macd_col = macd_col.iloc[:, 0]
             macd_hist = float(macd_col.iloc[-window:].mean())
             score += 0.5 if macd_hist > 0 else -0.5
-            components["macd"] = "bullish" if macd_hist > 0 else "bearish"
+            components["macd"] = 0.5 if macd_hist > 0 else -0.5
     except Exception:
         pass
 
@@ -77,7 +77,7 @@ def compute_basic_signal(
                 close_col = close_col.iloc[:, 0]
             trend_up = 1 if float(close_col.iloc[-1]) > float(sma_col.iloc[-1]) else -1
             score += trend_up * 0.5
-            components["trend"] = "above SMA20" if trend_up > 0 else "below SMA20"
+            components["trend"] = trend_up * 0.5
     except Exception:
         pass
 

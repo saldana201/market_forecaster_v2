@@ -1,0 +1,18 @@
+{
+  "ETH-USD": {
+    "params": {
+      "growth_mode": "linear",
+      "seasonality_mode": "additive",
+      "cps": 0.01,
+      "sps": 3.0
+    },
+    "metrics": {
+      "mape_mean": 17.06332058797016,
+      "mape_std": 6.468950752982307,
+      "stability_score": 18.680558276215738,
+      "dir_accuracy": 55.08474576271186,
+      "folds": 2
+    },
+    "last_updated": "2026-09-14T04:13:24.961579"
+  }
+}

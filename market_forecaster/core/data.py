@@ -1,200 +1,232 @@
-"""
-Market Forecaster — Data Fetching
-Handles stock price and options chain data retrieval.
-No Streamlit dependency — can be used from API or CLI.
-"""
+"""Market data access with validation, retries, and freshness metadata."""
+
+from __future__ import annotations
 
 import logging
-from datetime import timedelta
+import re
+import time
+from datetime import datetime, timezone
+from typing import Final
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
+_TICKER_RE: Final = re.compile(r"^[A-Z0-9.^=_-]{1,24}$")
+_REQUIRED_PRICE_COLUMNS: Final = ("Open", "High", "Low", "Close")
+
+
+class DataProviderError(RuntimeError):
+    """Raised when a market-data provider returns unusable data."""
+
+
+def normalize_ticker(ticker: str) -> str:
+    value = str(ticker or "").upper().strip()
+    if not value or not _TICKER_RE.fullmatch(value):
+        raise ValueError("Invalid ticker symbol")
+    return value
+
+
+def infer_forecast_freq(ticker: str, interval: str = "1d") -> str:
+    """Return a conservative pandas frequency for future forecast dates."""
+    interval = str(interval or "1d").lower()
+    if interval == "1wk":
+        return "W-FRI"
+    if interval == "1mo":
+        return "ME"
+    symbol = normalize_ticker(ticker)
+    # Yahoo crypto pairs conventionally end in -USD; crypto trades seven days/week.
+    return "D" if symbol.endswith("-USD") else "B"
+
+
+def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if isinstance(df.columns, pd.MultiIndex):
+        out = df.copy()
+        out.columns = [col[0] if isinstance(col, tuple) else col for col in out.columns]
+        return out
+    return df
+
+
+def _clean_market_frame(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        raise DataProviderError(f"No market data returned for {ticker}")
+
+    out = _flatten_columns(df.reset_index())
+    if "Date" not in out.columns and "Datetime" in out.columns:
+        out = out.rename(columns={"Datetime": "Date"})
+    if "Date" not in out.columns:
+        raise DataProviderError("Provider response has no Date/Datetime column")
+
+    out["Date"] = pd.to_datetime(out["Date"], errors="coerce", utc=True).dt.tz_localize(None)
+    out = out.dropna(subset=["Date"]).sort_values("Date")
+    out = out.drop_duplicates(subset=["Date"], keep="last")
+
+    for col in _REQUIRED_PRICE_COLUMNS:
+        if col not in out.columns:
+            raise DataProviderError(f"Provider response missing required column: {col}")
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    if "Volume" in out.columns:
+        out["Volume"] = pd.to_numeric(out["Volume"], errors="coerce")
+
+    out = out.dropna(subset=["Close"])
+    if out.empty:
+        raise DataProviderError(f"No valid closing prices returned for {ticker}")
+
+    out = out.reset_index(drop=True)
+    out.attrs["provider"] = "yfinance"
+    out.attrs["ticker"] = ticker
+    out.attrs["fetched_at_utc"] = datetime.now(timezone.utc).isoformat()
+    out.attrs["last_market_timestamp"] = out["Date"].max().isoformat()
+    return out
 
 
 def fetch_stock_data(
-    ticker: str, period: str = "1y", interval: str = "1d"
+    ticker: str,
+    period: str = "1y",
+    interval: str = "1d",
+    *,
+    max_attempts: int = 3,
+    backoff_seconds: float = 0.5,
 ) -> pd.DataFrame:
-    """
-    Fetch historical stock data with clean Date column.
+    """Fetch historical market data; returns an empty frame after provider failure."""
+    symbol = normalize_ticker(ticker)
+    last_error: Exception | None = None
 
-    Returns a DataFrame with columns: Date, Open, High, Low, Close, Volume, etc.
-    Date is timezone-naive datetime64. Empty DataFrame on failure.
-    """
-    try:
-        df = yf.download(
-            ticker, period=period, interval=interval,
-            auto_adjust=False, progress=False,
-        )
-
-        if df.empty:
-            logger.warning(f"No data returned for {ticker}")
-            return pd.DataFrame()
-
-        df = df.reset_index()
-
-        # Normalize date column name
-        if "Date" not in df.columns and "Datetime" in df.columns:
-            df = df.rename(columns={"Datetime": "Date"})
-
-        if "Date" not in df.columns:
-            logger.error(f"No Date column found for {ticker}")
-            return pd.DataFrame()
-
-        # Ensure datetime type
-        if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
-            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-
-        # Clean NaT rows
-        nat_count = df["Date"].isna().sum()
-        if nat_count == len(df):
-            return pd.DataFrame()
-        if nat_count > 0:
-            df = df.dropna(subset=["Date"])
-
-        # Strip timezone
+    for attempt in range(1, max(1, max_attempts) + 1):
         try:
-            if hasattr(df["Date"].dt, "tz") and df["Date"].dt.tz is not None:
-                df["Date"] = df["Date"].dt.tz_localize(None)
-        except Exception:
-            pass
+            raw = yf.download(
+                symbol,
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+            return _clean_market_frame(raw, symbol)
+        except Exception as exc:  # provider exceptions vary by yfinance release
+            last_error = exc
+            logger.warning(
+                "market_data_fetch_failed ticker=%s attempt=%s/%s error=%s",
+                symbol,
+                attempt,
+                max_attempts,
+                type(exc).__name__,
+            )
+            if attempt < max_attempts:
+                time.sleep(backoff_seconds * (2 ** (attempt - 1)))
 
-        # Deduplicate
-        if df["Date"].duplicated().any():
-            df = df.drop_duplicates(subset=["Date"], keep="first")
+    logger.error("Market data unavailable for %s after retries: %s", symbol, last_error)
+    return pd.DataFrame()
 
-        # Flatten MultiIndex columns if yfinance returns them
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [
-                col[0] if isinstance(col, tuple) else col
-                for col in df.columns
-            ]
 
-        return df.reset_index(drop=True)
-
-    except Exception as e:
-        logger.error(f"Error fetching data for {ticker}: {e}")
-        return pd.DataFrame()
+def data_freshness(df: pd.DataFrame) -> dict:
+    if df is None or df.empty or "Date" not in df.columns:
+        return {"provider": None, "fetched_at_utc": None, "last_market_timestamp": None}
+    return {
+        "provider": df.attrs.get("provider", "unknown"),
+        "fetched_at_utc": df.attrs.get("fetched_at_utc"),
+        "last_market_timestamp": df.attrs.get(
+            "last_market_timestamp", pd.Timestamp(df["Date"].max()).isoformat()
+        ),
+    }
 
 
 def fetch_options_snapshot(ticker: str) -> dict:
-    """
-    Fetch current options chain snapshot for a ticker.
-
-    Returns aggregated metrics: put/call ratios, gamma exposure,
-    sentiment score, unusual activity. Returns empty dict on failure.
-    """
+    """Fetch a current options snapshot. No synthetic historical series are created."""
+    symbol = normalize_ticker(ticker)
     try:
-        stock = yf.Ticker(ticker)
-        expirations = stock.options
-
+        stock = yf.Ticker(symbol)
+        expirations = tuple(stock.options or ())
         if not expirations:
             return {}
 
-        total_call_volume = 0
-        total_put_volume = 0
-        total_call_oi = 0
-        total_put_oi = 0
-        total_gamma_exposure = 0.0
-        unusual_activities = []
+        call_vol = put_vol = call_oi = put_oi = 0.0
+        gamma_exposure = 0.0
+        unusual: list[dict] = []
 
-        current_price = stock.info.get("regularMarketPrice", 0)
-        if current_price == 0:
-            hist = stock.history(period="1d")
+        current_price = 0.0
+        try:
+            fast_info = stock.fast_info
+            current_price = float(fast_info.get("last_price") or 0.0)
+        except Exception:
+            pass
+        if current_price <= 0:
+            hist = stock.history(period="5d", auto_adjust=False)
             if not hist.empty:
-                current_price = float(hist["Close"].iloc[-1])
+                current_price = float(pd.to_numeric(hist["Close"], errors="coerce").dropna().iloc[-1])
 
-        for exp_date in expirations[:10]:
+        for expiry in expirations[:10]:
             try:
-                chain = stock.option_chain(exp_date)
-                calls, puts = chain.calls, chain.puts
+                chain = stock.option_chain(expiry)
+                for side, frame, sign in (("CALL", chain.calls, 1.0), ("PUT", chain.puts, -1.0)):
+                    if frame is None or frame.empty:
+                        continue
+                    vol = pd.to_numeric(frame.get("volume", 0), errors="coerce").fillna(0)
+                    oi = pd.to_numeric(frame.get("openInterest", 0), errors="coerce").fillna(0)
+                    if side == "CALL":
+                        call_vol += float(vol.sum())
+                        call_oi += float(oi.sum())
+                    else:
+                        put_vol += float(vol.sum())
+                        put_oi += float(oi.sum())
 
-                if calls.empty or puts.empty:
-                    continue
+                    strikes = pd.to_numeric(frame.get("strike", 0), errors="coerce").fillna(0)
+                    if current_price > 0:
+                        near = (strikes > 0) & ((current_price / strikes).between(0.8, 1.2))
+                        # Proxy only: OI-weighted near-money exposure, not option Greek gamma.
+                        gamma_exposure += sign * float((oi[near] * 100 * (current_price * 0.01) ** 2).sum())
 
-                total_call_volume += calls["volume"].fillna(0).sum()
-                total_put_volume += puts["volume"].fillna(0).sum()
-                total_call_oi += calls["openInterest"].fillna(0).sum()
-                total_put_oi += puts["openInterest"].fillna(0).sum()
-
-                # Simplified gamma exposure (near-the-money only)
-                for _, row in calls.iterrows():
-                    strike = row.get("strike", 0)
-                    oi = row.get("openInterest", 0) or 0
-                    if current_price > 0 and strike > 0:
-                        moneyness = current_price / strike
-                        if 0.8 < moneyness < 1.2:
-                            total_gamma_exposure += oi * 100 * (current_price * 0.01) ** 2
-
-                for _, row in puts.iterrows():
-                    strike = row.get("strike", 0)
-                    oi = row.get("openInterest", 0) or 0
-                    if current_price > 0 and strike > 0:
-                        moneyness = current_price / strike
-                        if 0.8 < moneyness < 1.2:
-                            total_gamma_exposure -= oi * 100 * (current_price * 0.01) ** 2
-
-                # Unusual activity detection (volume > 2x OI)
-                for side, frame in [("CALL", calls), ("PUT", puts)]:
-                    for _, row in frame.iterrows():
-                        vol = row.get("volume", 0) or 0
-                        oi = row.get("openInterest", 0) or 0
-                        if oi > 100 and vol > 2 * oi:
-                            unusual_activities.append({
+                    mask = (oi > 100) & (vol > 2 * oi)
+                    for idx in frame.index[mask]:
+                        row_oi = float(oi.loc[idx])
+                        row_vol = float(vol.loc[idx])
+                        unusual.append(
+                            {
                                 "type": side,
-                                "strike": row["strike"],
-                                "expiry": exp_date,
-                                "volume": vol,
-                                "oi": oi,
-                                "ratio": round(vol / oi, 2) if oi > 0 else 0,
-                            })
-            except Exception as e:
-                logger.debug(f"Skipping expiry {exp_date}: {e}")
-                continue
+                                "strike": float(strikes.loc[idx]),
+                                "expiry": expiry,
+                                "volume": int(row_vol),
+                                "oi": int(row_oi),
+                                "ratio": round(row_vol / row_oi, 2) if row_oi else 0.0,
+                            }
+                        )
+            except Exception as exc:
+                logger.debug("options_expiry_skipped ticker=%s expiry=%s error=%s", symbol, expiry, exc)
 
-        # Compute derived metrics
-        pcr_vol = total_put_volume / max(total_call_volume, 1)
-        pcr_oi = total_put_oi / max(total_call_oi, 1)
-
+        pcr_vol = put_vol / max(call_vol, 1.0)
+        pcr_oi = put_oi / max(call_oi, 1.0)
         vol_sentiment = 50 * (1 - pcr_vol / (1 + pcr_vol)) + 50
         oi_sentiment = 50 * (1 - pcr_oi / (1 + pcr_oi)) + 50
-        gamma_sentiment = 75 if total_gamma_exposure > 0 else 25 if total_gamma_exposure < 0 else 50
-
-        overall_sentiment = vol_sentiment * 0.4 + oi_sentiment * 0.3 + gamma_sentiment * 0.3
-
-        def _safe(v, default=0):
-            return default if pd.isna(v) else v
+        gamma_sentiment = 75 if gamma_exposure > 0 else 25 if gamma_exposure < 0 else 50
+        score = vol_sentiment * 0.4 + oi_sentiment * 0.3 + gamma_sentiment * 0.3
 
         return {
-            "put_call_volume_ratio": _safe(pcr_vol, 1.0),
-            "put_call_oi_ratio": _safe(pcr_oi, 1.0),
-            "total_call_volume": int(total_call_volume),
-            "total_put_volume": int(total_put_volume),
-            "total_call_oi": int(total_call_oi),
-            "total_put_oi": int(total_put_oi),
-            "gamma_exposure": _safe(total_gamma_exposure, 0),
-            "options_sentiment_score": _safe(overall_sentiment, 50),
-            "unusual_activities": sorted(unusual_activities, key=lambda x: x["ratio"], reverse=True)[:10],
-            "current_price": _safe(current_price, 0),
+            "put_call_volume_ratio": float(pcr_vol),
+            "put_call_oi_ratio": float(pcr_oi),
+            "total_call_volume": int(call_vol),
+            "total_put_volume": int(put_vol),
+            "total_call_oi": int(call_oi),
+            "total_put_oi": int(put_oi),
+            "gamma_exposure_proxy": float(gamma_exposure),
+            "options_sentiment_score": float(score),
+            "unusual_activities": sorted(unusual, key=lambda item: item["ratio"], reverse=True)[:10],
+            "current_price": float(current_price),
+            "provider": "yfinance",
+            "fetched_at_utc": datetime.now(timezone.utc).isoformat(),
+            "notes": "gamma_exposure_proxy is an OI-based proxy and is not dealer-positioned Greek gamma",
         }
-
-    except Exception as e:
-        logger.error(f"Options fetch failed for {ticker}: {e}")
+    except Exception as exc:
+        logger.error("Options fetch failed for %s: %s", symbol, exc)
         return {}
 
 
 def get_close_series(df: pd.DataFrame) -> pd.Series:
-    """Extract a clean 1-D Close price series from a stock DataFrame."""
     if df is None or df.empty:
         return pd.Series(dtype="float64")
-
     for col in ("Close", "Adj Close"):
         if col in df.columns:
             obj = df[col]
             if isinstance(obj, pd.DataFrame):
                 obj = obj.iloc[:, 0]
             return pd.to_numeric(obj, errors="coerce")
-
     return pd.Series(dtype="float64")

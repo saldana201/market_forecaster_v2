@@ -29,13 +29,17 @@ from market_forecaster.ui.components import (
 )
 from market_forecaster.ui.plots import plot_forecast, plot_ensemble, plot_seasonal_bars
 from market_forecaster.ui.insights import generate_forecast_insight, pattern_bias_label
+from market_forecaster.ui.validation_panel import render_validation_panel
+from market_forecaster.ui.regime_panel import render_regime_panel
+from market_forecaster.ui.xgb_panel import render_xgb_panel
+from market_forecaster.ui.consensus_panel import render_production_consensus_panel
 
 # Core
-from market_forecaster.core.data import fetch_stock_data, get_close_series
+from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
 from market_forecaster.core.indicators import add_technical_indicators
 from market_forecaster.core.patterns import detect_chart_patterns, append_pattern_features
 from market_forecaster.core.prophet_model import (
-    prepare_for_prophet, fit_and_forecast, evaluate_holdout,
+    prepare_for_prophet, fit_and_forecast, evaluate_oos,
 )
 from market_forecaster.core.ensemble import run_ensemble_forecast
 from market_forecaster.core.sentiment import SentimentAnalyzer
@@ -140,7 +144,7 @@ with tab_forecast:
 
         # ---- Patterns ----
         pattern_scores = detect_chart_patterns(stock_df)
-        stock_df = append_pattern_features(stock_df, pattern_scores)
+        # Pattern snapshots remain UI/signal inputs only; do not backfill them through model history.
         st.session_state["pattern_scores"] = pattern_scores
         st.session_state["stock_df"] = stock_df
 
@@ -162,7 +166,7 @@ with tab_forecast:
 
             model, forecast, contributions = fit_and_forecast(
                 prophet_df, future_days=req.horizon,
-                use_options=req.use_options, **model_kwargs,
+                use_options=req.use_options, future_freq=infer_forecast_freq(req.ticker, req.interval), **model_kwargs,
             )
 
             # De-normalize
@@ -176,7 +180,16 @@ with tab_forecast:
         st.session_state["prophet_df"] = prophet_df
 
         # ---- Evaluation ----
-        metrics = evaluate_holdout(prophet_df, forecast, req.holdout_days)
+        metrics = evaluate_oos(
+            prophet_df,
+            holdout_days=req.holdout_days,
+            model_kwargs=model_kwargs,
+            use_options=req.use_options,
+            growth_mode=req.growth_mode,
+            normalize_logistic=req.normalize_logistic,
+            n_folds=3,
+            future_freq=infer_forecast_freq(req.ticker, req.interval),
+        )
 
         # ---- Enhanced models ----
         ensemble_result = None
@@ -187,7 +200,10 @@ with tab_forecast:
         if req.use_ensemble:
             with st.spinner("Running ensemble models..."):
                 try:
-                    ensemble_result = run_ensemble_forecast(req.ticker, stock_df, req.horizon)
+                    ensemble_result = run_ensemble_forecast(
+                        req.ticker, stock_df, req.horizon,
+                        weights=st.session_state.get("regime_routing_weights"),
+                    )
                     st.session_state["ensemble_result"] = ensemble_result
                 except Exception as e:
                     st.warning(f"Ensemble error: {e}")
@@ -276,7 +292,7 @@ with tab_forecast:
 
         # ---- Metrics ----
         if is_trader():
-            st.subheader("Model Performance")
+            st.subheader("Out-of-Sample Model Performance")
             metric_row({
                 "MAE": metrics.get("mae", np.nan),
                 "RMSE": metrics.get("rmse", np.nan),
@@ -294,6 +310,8 @@ with tab_forecast:
                 f"{req.ticker} — {req.horizon}-Day Forecast",
                 tech_df=stock_df if is_trader() else None,
                 show_technicals=is_trader(),
+                history_df=prophet_df,
+                pattern_scores=pattern_scores,
             )
 
         # ---- Regressor impact (Analyst) ----
@@ -333,6 +351,9 @@ if tab_ensemble:
     with tab_ensemble:
         st.header("📊 Ensemble Model Forecasting")
         result = st.session_state.get("ensemble_result")
+        render_regime_panel(st.session_state.get("stock_df"), result)
+        render_xgb_panel(st.session_state.get("stock_df"), req.ticker, req.interval)
+        render_production_consensus_panel(st.session_state.get("ensemble_result"), st.session_state.get("xgb_multihorizon_result"), req.ticker)
         if result:
             plot_ensemble(result, req.ticker)
             c1, c2, c3 = st.columns(3)
@@ -438,6 +459,8 @@ if tab_seasonal:
 if tab_backtest:
     with tab_backtest:
         st.header("🔁 Prophet Backtest")
+        render_validation_panel(req, st.session_state.get("stock_df"))
+        st.markdown("---")
         model = st.session_state.get("prophet_model")
         hist = st.session_state.get("prophet_df")
 
@@ -481,7 +504,7 @@ if tab_patterns:
 
             st.markdown("""
             **Scores:** 0.00 = not detected · 0.40+ = developing · 0.70+ = strong textbook pattern.
-            Scores are fed into the forecast model as regressors.
+            Scores are current-snapshot signal inputs only; they are not historical model regressors until a causal pattern timeline is implemented.
             """)
         else:
             st.info("Run a forecast first to see pattern analysis.")
