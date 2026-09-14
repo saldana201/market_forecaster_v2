@@ -1,26 +1,26 @@
-Market Forecaster Forecast Audit + Governance Patch 2.9.0
+Market Forecaster Drift Monitoring + Deployment Policy Patch 3.0.0
 
 NEW
-- market_forecaster/core/forecast_audit.py
-- market_forecaster/ui/governance_panel.py
-- market_forecaster/api/routes/audit.py
-- market_forecaster/tests/test_forecast_audit.py
+- market_forecaster/core/deployment_policy.py
+- market_forecaster/ui/deployment_panel.py
+- market_forecaster/api/routes/deployment_policy.py
+- market_forecaster/tests/test_deployment_policy.py
 
 PATCHED BY INSTALLER
+- market_forecaster/core/forecast_audit.py
 - market_forecaster/ui/consensus_panel.py
 - market_forecaster/app.py
 - market_forecaster/api/main.py
-- market_forecaster/config.py (2.8.0 -> 2.9.0)
+- market_forecaster/config.py (2.9.0 -> 3.0.0)
 
 RUNTIME
-- .local/forecast_audit/runs/<TICKER>.jsonl
-- .local/forecast_audit/outcomes/<TICKER>.jsonl
+- .local/forecast_audit/governance/<TICKER>.jsonl
 
 POLICY
-- immutable run ledger
-- separate append-only outcome ledger
-- exact-rerun dedup
-- same-market-snapshot anti-overweighting
-- 20 resolved predictions + 5 market snapshots for eligibility
-- challenger needs >=5% realized MAE improvement for review
-- advisory only; no auto promotion/demotion
+- default champion: adaptive_production_consensus
+- drift monitor: recent 10 vs older 20 outcomes
+- WATCH: >=25% MAE degradation or >=10pp direction drop
+- FROZEN challenger: >=50% MAE degradation or severe direction deterioration
+- incumbent is alerted as DEGRADED, never auto-replaced
+- challenger promotion requires explicit approval
+- frozen approved challenger falls back to incumbent

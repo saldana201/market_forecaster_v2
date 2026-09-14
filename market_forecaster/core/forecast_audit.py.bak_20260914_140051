@@ -159,7 +159,6 @@ def build_consensus_audit_record(
     *,
     app_version: str,
     options_promotion: Any = None,
-    deployment_decision: Any = None,
     horizons: Iterable[int] = AUDIT_HORIZONS,
 ) -> dict:
     symbol = str(ticker or "").upper().strip()
@@ -210,11 +209,6 @@ def build_consensus_audit_record(
         "base_status": str(getattr(result, "base_status", "UNKNOWN")),
         "current_regime": str(getattr(result, "current_regime", "UNKNOWN")),
         "production_candidate": INCUMBENT_CANDIDATE,
-        "approved_champion": str(getattr(deployment_decision, "approved_champion", INCUMBENT_CANDIDATE)) if deployment_decision is not None else INCUMBENT_CANDIDATE,
-        "effective_champion": str(getattr(deployment_decision, "effective_champion", INCUMBENT_CANDIDATE)) if deployment_decision is not None else INCUMBENT_CANDIDATE,
-        "deployment_policy_status": str(getattr(deployment_decision, "policy_status", "DEFAULT_INCUMBENT")) if deployment_decision is not None else "DEFAULT_INCUMBENT",
-        "deployment_drift_status": str(getattr(deployment_decision, "drift_status", "COLLECTING")) if deployment_decision is not None else "COLLECTING",
-        "deployment_approval_event_id": getattr(deployment_decision, "approval_event_id", None) if deployment_decision is not None else None,
         "models_used": _jsonable(ensemble_result.get("models_used", [])),
         "ensemble_weights": _jsonable(weights),
         "xgb_anchors": _jsonable(list(getattr(result, "xgb_anchors", []) or [])),
@@ -244,7 +238,6 @@ def record_consensus_audit(
     stock_df: pd.DataFrame | None,
     *,
     options_promotion: Any = None,
-    deployment_decision: Any = None,
     app_version: str | None = None,
     base_dir: str | Path | None = None,
 ) -> tuple[str, bool]:
@@ -260,7 +253,6 @@ def record_consensus_audit(
         stock_df,
         app_version=str(app_version),
         options_promotion=options_promotion,
-        deployment_decision=deployment_decision,
     )
     return str(record["run_id"]), persist_audit_run(record, base_dir=base_dir)
 

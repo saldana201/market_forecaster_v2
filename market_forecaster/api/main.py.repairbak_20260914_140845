@@ -24,7 +24,6 @@ from market_forecaster.api.routes import options as options_routes
 from market_forecaster.api.routes import options_history as options_history_routes
 from market_forecaster.api.routes import options_promotion as options_promotion_routes
 from market_forecaster.api.routes import audit as audit_routes
-from market_forecaster.api.routes import deployment_policy as deployment_policy_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
 from market_forecaster.config import DISCLAIMER, __version__
@@ -68,7 +67,6 @@ app.include_router(options_routes.router, prefix="/api/v1", tags=["Options Flow"
 app.include_router(options_history_routes.router, prefix="/api/v1", tags=["Options History"], dependencies=protected)
 app.include_router(options_promotion_routes.router, prefix="/api/v1", tags=["Options Promotion"], dependencies=protected)
 app.include_router(audit_routes.router, prefix="/api/v1", tags=["Forecast Audit"], dependencies=protected)
-app.include_router(deployment_policy_routes.router, prefix="/api/v1", tags=["Deployment Policy"], dependencies=protected)
 
 
 @app.exception_handler(RequestValidationError)

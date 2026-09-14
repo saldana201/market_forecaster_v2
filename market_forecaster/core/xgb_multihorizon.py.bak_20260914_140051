@@ -1,0 +1,522 @@
+"""Direct multi-horizon XGBoost return forecasts with quantile scenarios.
+
+Production principles:
+- Features are causal: every row only uses information available at that row.
+- Targets are future cumulative log returns at fixed horizons.
+- Validation is chronological and purged by at least the target horizon so
+  training labels cannot overlap a validation window.
+- A zero-return / last-price forecast is the mandatory baseline.
+- Quantiles are scenarios (10/50/90), not guaranteed confidence intervals.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import asdict, dataclass
+from typing import Iterable, Optional
+
+import numpy as np
+import pandas as pd
+
+from market_forecaster.core.validation import expanding_window_splits
+from market_forecaster.core.regime import classify_regime
+
+logger = logging.getLogger(__name__)
+
+try:
+    from xgboost import XGBRegressor
+    XGBOOST_AVAILABLE = True
+except ImportError:  # pragma: no cover - environment dependent
+    XGBRegressor = None
+    XGBOOST_AVAILABLE = False
+
+DEFAULT_HORIZONS = (1, 5, 10, 20)
+DEFAULT_QUANTILES = (0.10, 0.50, 0.90)
+
+
+def _infer_forecast_freq(ticker: str, interval: str = "1d") -> str:
+    """Local calendar helper to keep the modeling core provider-independent."""
+    interval = str(interval or "1d").lower()
+    if interval == "1wk":
+        return "W-FRI"
+    if interval == "1mo":
+        return "ME"
+    symbol = str(ticker or "").upper().strip()
+    return "D" if symbol.endswith("-USD") else "B"
+
+
+@dataclass
+class HorizonValidation:
+    horizon: int
+    folds_run: int
+    folds_requested: int
+    return_mae_pct: float
+    directional_accuracy_pct: float
+    interval_coverage_pct: float
+    interval_width_pct: float
+    price_smape_pct: float
+    baseline_price_smape_pct: float
+    improvement_vs_baseline_pct: float
+    pinball_loss: float
+    production_gate: str
+    regime_matching_folds: int = 0
+    regime_improvement_vs_baseline_pct: float = float("nan")
+    regime_directional_accuracy_pct: float = float("nan")
+    regime_interval_coverage_pct: float = float("nan")
+    regime_gate: str = "HOLD"
+
+
+@dataclass
+class HorizonForecast:
+    horizon: int
+    target_date: str
+    bear_return_pct: float
+    base_return_pct: float
+    bull_return_pct: float
+    bear_price: float
+    base_price: float
+    bull_price: float
+    validation: HorizonValidation
+
+
+@dataclass
+class MultiHorizonXGBResult:
+    ticker: str
+    as_of: str
+    current_price: float
+    forecasts: list[HorizonForecast]
+    feature_importance: list[dict]
+    feature_count: int
+    train_rows_by_horizon: dict[int, int]
+    config: dict
+    notes: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def _series(df: pd.DataFrame, name: str, fallback: Optional[str] = None) -> pd.Series:
+    col = name if name in df.columns else fallback
+    if not col or col not in df.columns:
+        return pd.Series(np.nan, index=df.index, dtype="float64")
+    obj = df[col]
+    if isinstance(obj, pd.DataFrame):
+        obj = obj.iloc[:, 0]
+    return pd.to_numeric(obj, errors="coerce")
+
+
+def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / window, adjust=False, min_periods=window).mean()
+    avg_loss = loss.ewm(alpha=1 / window, adjust=False, min_periods=window).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100 - (100 / (1 + rs))
+
+
+def build_xgb_features(stock_df: pd.DataFrame) -> pd.DataFrame:
+    """Build a causal feature frame indexed one-to-one with cleaned market rows."""
+    if stock_df is None or stock_df.empty or "Date" not in stock_df.columns:
+        raise ValueError("XGBoost requires a non-empty market frame with Date")
+
+    df = stock_df.copy()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+
+    frame = pd.DataFrame({
+        "Date": pd.to_datetime(df["Date"], errors="coerce"),
+        "Open": _series(df, "Open"),
+        "High": _series(df, "High"),
+        "Low": _series(df, "Low"),
+        "Close": _series(df, "Close", "Adj Close"),
+        "Volume": _series(df, "Volume"),
+    })
+    frame = frame.dropna(subset=["Date", "Close"]).sort_values("Date").drop_duplicates("Date", keep="last")
+    frame = frame.reset_index(drop=True)
+    frame = frame[frame["Close"] > 0].reset_index(drop=True)
+    if len(frame) < 120:
+        raise ValueError("XGBoost requires at least 120 clean observations")
+
+    close = frame["Close"].astype(float)
+    log_price = np.log(close)
+    ret1 = log_price.diff()
+
+    # Price/return momentum. Every value is known at timestamp t.
+    for lag in (1, 2, 3, 5, 10, 20, 60):
+        frame[f"logret_{lag}"] = log_price.diff(lag)
+
+    # Realized volatility proxies.
+    for win in (5, 10, 20, 60):
+        frame[f"vol_{win}"] = ret1.rolling(win, min_periods=win).std() * np.sqrt(252)
+
+    # Trend distances are scale-free and usable across tickers.
+    for win in (5, 20, 50, 200):
+        sma = close.rolling(win, min_periods=win).mean()
+        frame[f"close_sma_{win}"] = close / sma - 1.0
+
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    macd_signal = macd.ewm(span=9, adjust=False).mean()
+    frame["macd_pct"] = macd / close
+    frame["macd_hist_pct"] = (macd - macd_signal) / close
+    frame["rsi_14"] = _rsi(close) / 100.0
+
+    # Intrabar structure.
+    frame["range_pct"] = (frame["High"] - frame["Low"]) / close
+    frame["open_close_pct"] = (close - frame["Open"]) / frame["Open"].replace(0, np.nan)
+
+    # Volume structure. Missing volume (some instruments/providers) remains NaN
+    # and is later filled with training medians, never backward-filled from future rows.
+    volume = frame["Volume"].replace(0, np.nan)
+    vol_mean = volume.rolling(20, min_periods=20).mean()
+    vol_std = volume.rolling(20, min_periods=20).std()
+    frame["volume_z20"] = (volume - vol_mean) / vol_std.replace(0, np.nan)
+    frame["volume_log_chg"] = np.log(volume).diff()
+
+    # Calendar features known in advance.
+    dow = frame["Date"].dt.dayofweek.astype(float)
+    frame["dow_sin"] = np.sin(2 * np.pi * dow / 7.0)
+    frame["dow_cos"] = np.cos(2 * np.pi * dow / 7.0)
+    month = frame["Date"].dt.month.astype(float)
+    frame["month_sin"] = np.sin(2 * np.pi * month / 12.0)
+    frame["month_cos"] = np.cos(2 * np.pi * month / 12.0)
+
+    return frame
+
+
+def feature_columns(frame: pd.DataFrame) -> list[str]:
+    excluded = {"Date", "Open", "High", "Low", "Close", "Volume"}
+    return [c for c in frame.columns if c not in excluded and not c.startswith("target_")]
+
+
+def _target(frame: pd.DataFrame, horizon: int) -> pd.Series:
+    return np.log(frame["Close"].shift(-horizon) / frame["Close"])
+
+
+def _smape(actual: np.ndarray, predicted: np.ndarray) -> float:
+    actual = np.asarray(actual, dtype=float)
+    predicted = np.asarray(predicted, dtype=float)
+    denom = (np.abs(actual) + np.abs(predicted)) / 2.0
+    good = np.isfinite(actual) & np.isfinite(predicted) & (denom > 0)
+    if not good.any():
+        return float("nan")
+    return float(np.mean(np.abs(actual[good] - predicted[good]) / denom[good]) * 100)
+
+
+def _pinball(y: np.ndarray, pred: np.ndarray, alpha: float) -> float:
+    err = np.asarray(y, dtype=float) - np.asarray(pred, dtype=float)
+    return float(np.mean(np.maximum(alpha * err, (alpha - 1.0) * err)))
+
+
+def _params(n_estimators: int, random_state: int) -> dict:
+    return {
+        "objective": "reg:quantileerror",
+        "quantile_alpha": np.asarray(DEFAULT_QUANTILES),
+        "n_estimators": int(n_estimators),
+        "max_depth": 4,
+        "learning_rate": 0.035,
+        "min_child_weight": 5.0,
+        "subsample": 0.82,
+        "colsample_bytree": 0.82,
+        "reg_alpha": 0.05,
+        "reg_lambda": 2.0,
+        "tree_method": "hist",
+        "n_jobs": 1,
+        "random_state": int(random_state),
+        "verbosity": 0,
+    }
+
+
+def _ordered_quantiles(pred: np.ndarray) -> np.ndarray:
+    arr = np.asarray(pred, dtype=float)
+    if arr.ndim == 1:
+        arr = np.column_stack([arr, arr, arr])
+    if arr.shape[1] != 3:
+        raise ValueError(f"Expected three quantile outputs, got shape {arr.shape}")
+    # Tree quantile estimates can cross. Sorting keeps scenario semantics honest.
+    return np.sort(arr, axis=1)
+
+
+def _fit_quantile_model(X: pd.DataFrame, y: pd.Series, *, n_estimators: int, random_state: int):
+    if not XGBOOST_AVAILABLE:
+        raise RuntimeError("xgboost is not installed. Install xgboost==3.1.3")
+    model = XGBRegressor(**_params(n_estimators, random_state))
+    model.fit(X, y)
+    return model
+
+
+def _prepare_xy(frame: pd.DataFrame, horizon: int) -> tuple[pd.DataFrame, pd.Series, pd.Series, list[str]]:
+    features = feature_columns(frame)
+    target = _target(frame, horizon)
+    work = frame[["Date", "Close", *features]].copy()
+    work[f"target_{horizon}"] = target
+    # No backward fill. XGBoost can handle NaNs, but we require a finite Close/target.
+    work = work.dropna(subset=["Close", f"target_{horizon}"]).reset_index(drop=True)
+    X = work[features].replace([np.inf, -np.inf], np.nan)
+    y = work[f"target_{horizon}"].astype(float)
+    anchors = work["Close"].astype(float)
+    return X, y, anchors, features
+
+
+def _validate_horizon(
+    frame: pd.DataFrame,
+    horizon: int,
+    *,
+    n_folds: int,
+    test_size: int,
+    embargo: int,
+    n_estimators: int,
+    random_state: int,
+    current_regime: str,
+) -> HorizonValidation:
+    X, y, anchors, _ = _prepare_xy(frame, horizon)
+    min_train = max(180, 8 * horizon)
+    purge_gap = max(int(embargo), int(horizon))
+    splits = list(expanding_window_splits(
+        len(X),
+        test_size=int(test_size),
+        n_splits=int(n_folds),
+        gap=purge_gap,
+        min_train_size=min_train,
+    ))
+    if not splits:
+        return HorizonValidation(
+            horizon=horizon, folds_run=0, folds_requested=n_folds,
+            return_mae_pct=float("nan"), directional_accuracy_pct=float("nan"),
+            interval_coverage_pct=float("nan"), interval_width_pct=float("nan"),
+            price_smape_pct=float("nan"), baseline_price_smape_pct=float("nan"),
+            improvement_vs_baseline_pct=float("nan"), pinball_loss=float("nan"),
+            production_gate="HOLD",
+        )
+
+    metrics: list[dict] = []
+    for split in splits:
+        X_train = X.iloc[split.train_start:split.train_end]
+        y_train = y.iloc[split.train_start:split.train_end]
+        X_test = X.iloc[split.test_start:split.test_end]
+        y_test = y.iloc[split.test_start:split.test_end].to_numpy(dtype=float)
+        anchor = anchors.iloc[split.test_start:split.test_end].to_numpy(dtype=float)
+        if len(X_train) < min_train or X_test.empty:
+            continue
+        try:
+            model = _fit_quantile_model(
+                X_train, y_train,
+                n_estimators=n_estimators,
+                random_state=random_state + split.fold,
+            )
+            q = _ordered_quantiles(model.predict(X_test))
+        except Exception as exc:
+            logger.warning("xgb_horizon_validation_failed horizon=%s fold=%s error=%s", horizon, split.fold, exc)
+            continue
+
+        low, med, high = q[:, 0], q[:, 1], q[:, 2]
+        actual_price = anchor * np.exp(y_test)
+        pred_price = anchor * np.exp(med)
+        baseline_price = anchor
+        smape = _smape(actual_price, pred_price)
+        baseline_smape = _smape(actual_price, baseline_price)
+        improvement = (
+            (baseline_smape - smape) / baseline_smape * 100
+            if np.isfinite(baseline_smape) and baseline_smape > 0 else float("nan")
+        )
+        direction = float(np.mean(np.sign(med) == np.sign(y_test)) * 100)
+        coverage = float(np.mean((y_test >= low) & (y_test <= high)) * 100)
+        width = float(np.mean((np.exp(high) - np.exp(low)) * 100))
+        pinball = float(np.mean([
+            _pinball(y_test, low, 0.10),
+            _pinball(y_test, med, 0.50),
+            _pinball(y_test, high, 0.90),
+        ]))
+        try:
+            train_window = frame.iloc[:split.train_end].copy()
+            fold_regime = classify_regime(train_window).composite
+        except Exception:
+            fold_regime = "UNKNOWN"
+        metrics.append({
+            "mae": float(np.mean(np.abs(y_test - med)) * 100),
+            "direction": direction,
+            "coverage": coverage,
+            "width": width,
+            "smape": smape,
+            "baseline_smape": baseline_smape,
+            "improvement": improvement,
+            "pinball": pinball,
+            "regime": fold_regime,
+        })
+
+    if not metrics:
+        return HorizonValidation(
+            horizon=horizon, folds_run=0, folds_requested=n_folds,
+            return_mae_pct=float("nan"), directional_accuracy_pct=float("nan"),
+            interval_coverage_pct=float("nan"), interval_width_pct=float("nan"),
+            price_smape_pct=float("nan"), baseline_price_smape_pct=float("nan"),
+            improvement_vs_baseline_pct=float("nan"), pinball_loss=float("nan"),
+            production_gate="HOLD",
+        )
+
+    def avg(key: str) -> float:
+        vals = [m[key] for m in metrics if np.isfinite(m[key])]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    improvement = avg("improvement")
+    directional = avg("direction")
+    coverage = avg("coverage")
+    fold_coverage = len(metrics) / max(1, n_folds) * 100
+    gate = (
+        fold_coverage >= 100
+        and np.isfinite(improvement) and improvement >= 2.0
+        and np.isfinite(directional) and directional >= 50.0
+        and np.isfinite(coverage) and coverage >= 60.0
+    )
+
+    matching = [m for m in metrics if m.get("regime") == current_regime]
+    def regime_avg(key: str) -> float:
+        vals = [m[key] for m in matching if np.isfinite(m[key])]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    regime_improvement = regime_avg("improvement")
+    regime_direction = regime_avg("direction")
+    regime_coverage = regime_avg("coverage")
+    regime_gate = (
+        gate
+        and len(matching) >= 2
+        and np.isfinite(regime_improvement) and regime_improvement >= 2.0
+        and np.isfinite(regime_direction) and regime_direction >= 50.0
+        and np.isfinite(regime_coverage) and regime_coverage >= 60.0
+    )
+    return HorizonValidation(
+        horizon=horizon,
+        folds_run=len(metrics),
+        folds_requested=n_folds,
+        return_mae_pct=avg("mae"),
+        directional_accuracy_pct=directional,
+        interval_coverage_pct=coverage,
+        interval_width_pct=avg("width"),
+        price_smape_pct=avg("smape"),
+        baseline_price_smape_pct=avg("baseline_smape"),
+        improvement_vs_baseline_pct=improvement,
+        pinball_loss=avg("pinball"),
+        production_gate="PASS" if gate else "HOLD",
+        regime_matching_folds=len(matching),
+        regime_improvement_vs_baseline_pct=regime_improvement,
+        regime_directional_accuracy_pct=regime_direction,
+        regime_interval_coverage_pct=regime_coverage,
+        regime_gate="PASS" if regime_gate else "HOLD",
+    )
+
+
+def _target_date(last_date: pd.Timestamp, horizon: int, ticker: str, interval: str) -> pd.Timestamp:
+    freq = _infer_forecast_freq(ticker, interval)
+    dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=horizon, freq=freq)
+    return pd.Timestamp(dates[-1])
+
+
+def run_xgb_multihorizon(
+    stock_df: pd.DataFrame,
+    ticker: str,
+    *,
+    interval: str = "1d",
+    horizons: Iterable[int] = DEFAULT_HORIZONS,
+    n_folds: int = 4,
+    test_size: int = 24,
+    embargo: int = 1,
+    n_estimators: int = 320,
+    random_state: int = 42,
+) -> MultiHorizonXGBResult:
+    """Fit direct quantile models for each requested horizon and forecast the latest row."""
+    if not XGBOOST_AVAILABLE:
+        raise RuntimeError("xgboost is not installed. Install xgboost==3.1.3")
+    frame = build_xgb_features(stock_df)
+    features = feature_columns(frame)
+    latest = frame.iloc[[-1]][features].replace([np.inf, -np.inf], np.nan)
+    current_price = float(frame["Close"].iloc[-1])
+    last_date = pd.Timestamp(frame["Date"].iloc[-1])
+    try:
+        current_regime = classify_regime(stock_df).composite
+    except Exception:
+        current_regime = "UNKNOWN"
+
+    forecasts: list[HorizonForecast] = []
+    importance_accum = pd.Series(0.0, index=features)
+    train_rows: dict[int, int] = {}
+
+    for horizon in sorted({int(h) for h in horizons if int(h) > 0}):
+        X, y, _, horizon_features = _prepare_xy(frame, horizon)
+        train_rows[horizon] = len(X)
+        if len(X) < max(180, 8 * horizon):
+            logger.warning("xgb_horizon_skipped horizon=%s rows=%s", horizon, len(X))
+            continue
+
+        validation = _validate_horizon(
+            frame, horizon,
+            n_folds=n_folds,
+            test_size=test_size,
+            embargo=embargo,
+            n_estimators=max(60, min(n_estimators, 220)),  # CV stays bounded for UI responsiveness.
+            random_state=random_state,
+            current_regime=current_regime,
+        )
+
+        model = _fit_quantile_model(X, y, n_estimators=n_estimators, random_state=random_state + horizon)
+        q = _ordered_quantiles(model.predict(latest[horizon_features]))[0]
+        low, med, high = [float(v) for v in q]
+        low = float(np.clip(low, -2.0, 2.0))
+        med = float(np.clip(med, -2.0, 2.0))
+        high = float(np.clip(high, -2.0, 2.0))
+
+        if hasattr(model, "feature_importances_"):
+            imp = np.asarray(model.feature_importances_, dtype=float)
+            if len(imp) == len(horizon_features):
+                importance_accum.loc[horizon_features] += np.nan_to_num(imp)
+
+        forecasts.append(HorizonForecast(
+            horizon=horizon,
+            target_date=_target_date(last_date, horizon, ticker, interval).isoformat(),
+            bear_return_pct=float((np.exp(low) - 1.0) * 100),
+            base_return_pct=float((np.exp(med) - 1.0) * 100),
+            bull_return_pct=float((np.exp(high) - 1.0) * 100),
+            bear_price=float(current_price * np.exp(low)),
+            base_price=float(current_price * np.exp(med)),
+            bull_price=float(current_price * np.exp(high)),
+            validation=validation,
+        ))
+
+    if not forecasts:
+        raise RuntimeError("XGBoost could not fit any requested horizon with the available history")
+
+    total_imp = float(importance_accum.sum())
+    if total_imp > 0:
+        importance_accum = importance_accum / total_imp
+    importance = [
+        {"feature": str(name), "importance": float(value)}
+        for name, value in importance_accum.sort_values(ascending=False).head(12).items()
+        if np.isfinite(value) and value > 0
+    ]
+
+    return MultiHorizonXGBResult(
+        ticker=str(ticker).upper().strip(),
+        as_of=last_date.isoformat(),
+        current_price=current_price,
+        forecasts=forecasts,
+        feature_importance=importance,
+        feature_count=len(features),
+        train_rows_by_horizon=train_rows,
+        config={
+            "horizons": [f.horizon for f in forecasts],
+            "quantiles": list(DEFAULT_QUANTILES),
+            "n_folds": int(n_folds),
+            "test_size": int(test_size),
+            "embargo": int(embargo),
+            "n_estimators": int(n_estimators),
+            "target": "cumulative_log_return",
+            "current_regime": current_regime,
+        },
+        notes=[
+            "Each horizon is a direct model; forecasts are not recursively chained day-by-day.",
+            "Validation uses a purge gap of at least the target horizon to prevent overlapping-label leakage.",
+            "Bear/Base/Bull are XGBoost 10th/50th/90th conditional quantile scenarios, not guaranteed confidence intervals.",
+            "The production gate requires complete folds, >=2% terminal-price sMAPE improvement vs last-price baseline, >=50% directional accuracy, and >=60% 10-90 interval coverage.",
+            "Regime PASS is stricter: global PASS plus at least two validation folds matching the current causal regime with the same improvement/direction/coverage thresholds.",
+        ],
+    )

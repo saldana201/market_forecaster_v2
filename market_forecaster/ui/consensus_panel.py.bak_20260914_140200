@@ -11,8 +11,6 @@ from market_forecaster.core.options_promotion import (
     build_options_promotion,
 )
 from market_forecaster.core.production_consensus import build_production_consensus
-from market_forecaster.core.forecast_audit import record_consensus_audit
-from market_forecaster.core.deployment_policy import build_deployment_decision
 
 
 def render_production_consensus_panel(
@@ -58,28 +56,6 @@ def render_production_consensus_panel(
     st.session_state["options_promotion_result"] = promotion
     st.session_state["adaptive_production_consensus_result"] = result
 
-    try:
-        deployment = build_deployment_decision(ticker, result)
-        st.session_state["deployment_decision"] = deployment
-    except Exception as exc:
-        deployment = None
-        st.caption(f"Deployment policy unavailable: {exc}")
-
-    # Append-only audit: exact Streamlit reruns are fingerprint-deduplicated.
-    try:
-        audit_run_id, audit_created = record_consensus_audit(
-            ticker,
-            result,
-            ensemble_result,
-            stock_df,
-            options_promotion=promotion,
-            deployment_decision=deployment,
-        )
-        st.session_state["forecast_audit_run_id"] = audit_run_id
-        st.session_state["forecast_audit_created"] = audit_created
-    except Exception as exc:
-        st.caption(f"Forecast audit unavailable: {exc}")
-
     xgb_count = len(result.xgb_anchors)
     opt_count = len(result.options_anchors)
 
@@ -113,32 +89,13 @@ def render_production_consensus_panel(
                 "Options promotion status: ACTIVE — each promoted options anchor is capped at 15% influence."
             )
 
-    deployed_path = result.consensus
-    deployed_lower = result.lower
-    deployed_upper = result.upper
-    if deployment is not None:
-        deployed_path = deployment.path
-        deployed_lower = deployment.lower
-        deployed_upper = deployment.upper
-        if deployment.policy_status == "FROZEN_FALLBACK":
-            st.warning(
-                f"Approved challenger {deployment.approved_champion} is frozen by drift policy. "
-                f"Effective deployment has fallen back to {deployment.effective_champion}."
-            )
-        else:
-            st.caption(
-                f"Deployment policy: approved **{deployment.approved_champion}** · "
-                f"effective **{deployment.effective_champion}** · "
-                f"state **{deployment.policy_status}**"
-            )
-
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=result.dates, y=deployed_upper,
+        x=result.dates, y=result.upper,
         mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
     ))
     fig.add_trace(go.Scatter(
-        x=result.dates, y=deployed_lower,
+        x=result.dates, y=result.lower,
         mode="lines", line=dict(width=0), fill="tonexty",
         fillcolor="rgba(16,185,129,0.10)",
         name="Shifted conformal band", hoverinfo="skip",
@@ -162,15 +119,6 @@ def render_production_consensus_panel(
         name="Adaptive Production Consensus" if opt_count else "Production Consensus",
         line=dict(width=3, color="#047857"),
     ))
-
-    if deployment is not None and deployment.effective_champion != "adaptive_production_consensus":
-        fig.add_trace(go.Scatter(
-            x=result.dates,
-            y=deployed_path,
-            mode="lines",
-            name="Deployed Champion",
-            line=dict(width=4, dash="solid", color="#0f766e"),
-        ))
 
     if result.xgb_anchors:
         anchor_dates = [pd.Timestamp(a.target_date) for a in result.xgb_anchors]
@@ -224,7 +172,7 @@ def render_production_consensus_panel(
         ))
 
     fig.update_layout(
-        title=f"{ticker} — Governed Production Forecast",
+        title=f"{ticker} — Adaptive Production Consensus",
         xaxis_title="Date", yaxis_title="Price",
         height=450, hovermode="x unified",
         margin=dict(l=10, r=10, t=50, b=10),
@@ -273,8 +221,8 @@ def render_production_consensus_panel(
         st.metric("Current regime", result.current_regime)
     with c2:
         end_change = (
-            (deployed_path[-1] / deployed_path[0] - 1.0) * 100
-            if deployed_path[0] else 0.0
+            (result.consensus[-1] / result.consensus[0] - 1.0) * 100
+            if result.consensus[0] else 0.0
         )
         st.metric("Consensus path change", f"{end_change:+.2f}%")
     with c3:
