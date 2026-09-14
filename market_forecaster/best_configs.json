@@ -30,5 +30,21 @@
       "folds": 1
     },
     "last_updated": "2026-09-14T13:58:09.048167"
+  },
+  "AAOI": {
+    "params": {
+      "growth_mode": "linear",
+      "seasonality_mode": "multiplicative",
+      "cps": 0.07,
+      "sps": 4.5
+    },
+    "metrics": {
+      "mape_mean": 35.86800637756948,
+      "mape_std": 6.5157554952483085,
+      "stability_score": 37.496945251381554,
+      "dir_accuracy": 50.0,
+      "folds": 2
+    },
+    "last_updated": "2026-09-14T14:29:26.345401"
   }
 }

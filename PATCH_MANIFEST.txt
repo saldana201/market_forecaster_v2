@@ -1,13 +1,15 @@
-Market Forecaster Options Flow v2 Patch 2.6.0
+Market Forecaster Historical Options Intelligence Patch 2.7.0
 
 NEW PAYLOAD FILES
-- market_forecaster/core/options_flow_v2.py
-- market_forecaster/ui/options_panel.py
-- market_forecaster/api/routes/options.py
-- market_forecaster/tests/test_options_flow_v2.py
+- market_forecaster/core/historical_options.py
+- market_forecaster/ui/options_history_panel.py
+- market_forecaster/api/routes/options_history.py
+- market_forecaster/tests/test_historical_options.py
 
 INSTALLER PATCHES
 - market_forecaster/app.py
-- market_forecaster/core/signals.py
 - market_forecaster/api/main.py
-- market_forecaster/config.py (version -> 2.6.0)
+- market_forecaster/config.py (2.6.0 -> 2.7.0)
+
+NO ROUTING CHANGES
+- Options features remain validation-only in 2.7.
