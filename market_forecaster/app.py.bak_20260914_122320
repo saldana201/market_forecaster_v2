@@ -35,7 +35,6 @@ from market_forecaster.ui.xgb_panel import render_xgb_panel
 from market_forecaster.ui.consensus_panel import render_production_consensus_panel
 from market_forecaster.ui.options_panel import render_options_flow_panel
 from market_forecaster.ui.options_history_panel import render_options_history_panel
-from market_forecaster.ui.governance_panel import render_governance_panel
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -479,8 +478,6 @@ if tab_seasonal:
 if tab_backtest:
     with tab_backtest:
         st.header("🔁 Prophet Backtest")
-        render_governance_panel(req.ticker, st.session_state.get("stock_df"))
-        st.markdown("---")
         render_options_history_panel(req.ticker, st.session_state.get("stock_df"))
         st.markdown("---")
         render_validation_panel(req, st.session_state.get("stock_df"))

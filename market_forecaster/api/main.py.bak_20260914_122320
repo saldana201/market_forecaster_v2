@@ -23,7 +23,6 @@ from market_forecaster.api.routes import consensus as consensus_routes
 from market_forecaster.api.routes import options as options_routes
 from market_forecaster.api.routes import options_history as options_history_routes
 from market_forecaster.api.routes import options_promotion as options_promotion_routes
-from market_forecaster.api.routes import audit as audit_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
 from market_forecaster.config import DISCLAIMER, __version__
@@ -66,7 +65,6 @@ app.include_router(consensus_routes.router, prefix="/api/v1", tags=["Consensus"]
 app.include_router(options_routes.router, prefix="/api/v1", tags=["Options Flow"], dependencies=protected)
 app.include_router(options_history_routes.router, prefix="/api/v1", tags=["Options History"], dependencies=protected)
 app.include_router(options_promotion_routes.router, prefix="/api/v1", tags=["Options Promotion"], dependencies=protected)
-app.include_router(audit_routes.router, prefix="/api/v1", tags=["Forecast Audit"], dependencies=protected)
 
 
 @app.exception_handler(RequestValidationError)

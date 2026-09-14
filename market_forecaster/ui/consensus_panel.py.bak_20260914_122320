@@ -11,7 +11,6 @@ from market_forecaster.core.options_promotion import (
     build_options_promotion,
 )
 from market_forecaster.core.production_consensus import build_production_consensus
-from market_forecaster.core.forecast_audit import record_consensus_audit
 
 
 def render_production_consensus_panel(
@@ -56,20 +55,6 @@ def render_production_consensus_panel(
     st.session_state["production_consensus_result"] = base_result
     st.session_state["options_promotion_result"] = promotion
     st.session_state["adaptive_production_consensus_result"] = result
-
-    # Append-only audit: exact Streamlit reruns are fingerprint-deduplicated.
-    try:
-        audit_run_id, audit_created = record_consensus_audit(
-            ticker,
-            result,
-            ensemble_result,
-            stock_df,
-            options_promotion=promotion,
-        )
-        st.session_state["forecast_audit_run_id"] = audit_run_id
-        st.session_state["forecast_audit_created"] = audit_created
-    except Exception as exc:
-        st.caption(f"Forecast audit unavailable: {exc}")
 
     xgb_count = len(result.xgb_anchors)
     opt_count = len(result.options_anchors)

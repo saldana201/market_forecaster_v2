@@ -1,0 +1,497 @@
+"""Persistent production-forecast audit and champion/challenger governance.
+
+Forecast run records are append-only. Realized outcomes live in a separate
+append-only ledger. Exact reruns are fingerprint-deduplicated, while governance
+uses only the latest production decision per market-data timestamp so repeated
+same-day experimentation cannot overweight one outcome.
+
+v2.9 governance is advisory: it never auto-promotes or auto-demotes a model.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+import numpy as np
+import pandas as pd
+
+
+AUDIT_HORIZONS = (1, 5, 10, 20)
+INCUMBENT_CANDIDATE = "adaptive_production_consensus"
+
+
+def _default_store_dir() -> Path:
+    override = os.getenv("MARKET_FORECASTER_AUDIT_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[1] / ".local" / "forecast_audit"
+
+
+def _safe_float(value, default=np.nan) -> float:
+    try:
+        value = float(value)
+    except Exception:
+        return float(default)
+    return value if np.isfinite(value) else float(default)
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        value = float(value)
+        return value if np.isfinite(value) else None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, np.ndarray):
+        return [_jsonable(x) for x in value.tolist()]
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(x) for x in value]
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if hasattr(value, "to_dict"):
+        try:
+            return _jsonable(value.to_dict())
+        except Exception:
+            pass
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _canonical_hash(payload: dict) -> str:
+    raw = json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _ticker_path(kind: str, ticker: str, base_dir: str | Path | None = None) -> Path:
+    symbol = str(ticker or "").upper().strip()
+    if not symbol:
+        raise ValueError("ticker is required")
+    directory = Path(base_dir) if base_dir is not None else _default_store_dir()
+    path = directory / kind / f"{symbol}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _read_jsonl(path: Path, limit: int | None = None) -> list[dict]:
+    if not path.exists():
+        return []
+    rows = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                rows.append(obj)
+    if limit is not None:
+        rows = rows[-max(1, int(limit)):]
+    return rows
+
+
+def _append_jsonl_once(path: Path, record: dict, id_field: str) -> bool:
+    record_id = str(record.get(id_field, ""))
+    if not record_id:
+        raise ValueError(f"{id_field} is required")
+    if any(str(row.get(id_field, "")) == record_id for row in _read_jsonl(path)):
+        return False
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(_jsonable(record), sort_keys=True, separators=(",", ":")) + "\n")
+    return True
+
+
+def load_audit_runs(ticker: str, *, base_dir: str | Path | None = None, limit: int | None = None) -> list[dict]:
+    return _read_jsonl(_ticker_path("runs", ticker, base_dir), limit)
+
+
+def load_audit_outcomes(ticker: str, *, base_dir: str | Path | None = None, limit: int | None = None) -> list[dict]:
+    return _read_jsonl(_ticker_path("outcomes", ticker, base_dir), limit)
+
+
+def _last_market_timestamp(stock_df: pd.DataFrame | None) -> str | None:
+    if stock_df is None or getattr(stock_df, "empty", True) or "Date" not in stock_df.columns:
+        return None
+    dates = pd.to_datetime(stock_df["Date"], errors="coerce").dropna()
+    if dates.empty:
+        return None
+    try:
+        dates = dates.dt.tz_localize(None)
+    except TypeError:
+        pass
+    return pd.Timestamp(dates.max()).isoformat()
+
+
+def _last_close(stock_df: pd.DataFrame | None) -> float:
+    if stock_df is None or getattr(stock_df, "empty", True) or "Close" not in stock_df.columns:
+        return 0.0
+    close = stock_df["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    close = pd.to_numeric(close, errors="coerce").dropna()
+    return float(close.iloc[-1]) if not close.empty else 0.0
+
+
+def _candidate_paths(result: Any) -> dict[str, np.ndarray]:
+    ensemble = np.asarray(getattr(result, "ensemble", []), dtype=float)
+    base = np.asarray(getattr(result, "base_consensus", ensemble), dtype=float)
+    final = np.asarray(getattr(result, "consensus", base), dtype=float)
+    return {
+        "validated_ensemble": ensemble,
+        "pre_options_consensus": base,
+        "adaptive_production_consensus": final,
+    }
+
+
+def build_consensus_audit_record(
+    ticker: str,
+    result: Any,
+    ensemble_result: dict | None,
+    stock_df: pd.DataFrame | None,
+    *,
+    app_version: str,
+    options_promotion: Any = None,
+    horizons: Iterable[int] = AUDIT_HORIZONS,
+) -> dict:
+    symbol = str(ticker or "").upper().strip()
+    dates = pd.DatetimeIndex(pd.to_datetime(getattr(result, "dates", [])))
+    paths = _candidate_paths(result)
+    if len(dates) == 0 or paths["adaptive_production_consensus"].size == 0:
+        raise ValueError("Audit requires a production consensus path")
+
+    spot = _last_close(stock_df)
+    if spot <= 0:
+        spot = float(paths["adaptive_production_consensus"][0])
+
+    targets = {}
+    for h in sorted({int(x) for x in horizons if int(x) >= 1}):
+        if h > len(dates):
+            continue
+        predictions = {}
+        for name, arr in paths.items():
+            if len(arr) >= h and np.isfinite(arr[h - 1]) and arr[h - 1] > 0:
+                predictions[name] = float(arr[h - 1])
+        if predictions:
+            targets[str(h)] = {
+                "horizon": h,
+                "target_date": pd.Timestamp(dates[h - 1]).isoformat(),
+                "predictions": predictions,
+            }
+    if not targets:
+        raise ValueError("No auditable forecast horizons are available")
+
+    ensemble_result = ensemble_result or {}
+    weights = (
+        ensemble_result.get("weights")
+        or ensemble_result.get("model_weights")
+        or ensemble_result.get("final_weights")
+        or {}
+    )
+    created_at = datetime.now(timezone.utc).isoformat()
+    record = {
+        "schema_version": 1,
+        "ticker": symbol,
+        "app_version": str(app_version),
+        "created_at_utc": created_at,
+        "market_last_timestamp": _last_market_timestamp(stock_df),
+        "provider": getattr(stock_df, "attrs", {}).get("provider") if stock_df is not None else None,
+        "fetched_at_utc": getattr(stock_df, "attrs", {}).get("fetched_at_utc") if stock_df is not None else None,
+        "spot": float(spot),
+        "production_status": str(getattr(result, "status", "UNKNOWN")),
+        "base_status": str(getattr(result, "base_status", "UNKNOWN")),
+        "current_regime": str(getattr(result, "current_regime", "UNKNOWN")),
+        "production_candidate": INCUMBENT_CANDIDATE,
+        "models_used": _jsonable(ensemble_result.get("models_used", [])),
+        "ensemble_weights": _jsonable(weights),
+        "xgb_anchors": _jsonable(list(getattr(result, "xgb_anchors", []) or [])),
+        "options_anchors": _jsonable(list(getattr(result, "options_anchors", []) or [])),
+        "options_promotion_status": str(getattr(options_promotion, "status", "UNAVAILABLE")) if options_promotion is not None else "UNAVAILABLE",
+        "options_promoted_horizons": _jsonable(getattr(options_promotion, "promoted_horizons", [])) if options_promotion is not None else [],
+        "targets": targets,
+    }
+    fingerprint = dict(record)
+    fingerprint.pop("created_at_utc", None)
+    record["run_id"] = _canonical_hash(fingerprint)[:24]
+    return record
+
+
+def persist_audit_run(record: dict, *, base_dir: str | Path | None = None) -> bool:
+    return _append_jsonl_once(
+        _ticker_path("runs", record.get("ticker", ""), base_dir),
+        record,
+        "run_id",
+    )
+
+
+def record_consensus_audit(
+    ticker: str,
+    result: Any,
+    ensemble_result: dict | None,
+    stock_df: pd.DataFrame | None,
+    *,
+    options_promotion: Any = None,
+    app_version: str | None = None,
+    base_dir: str | Path | None = None,
+) -> tuple[str, bool]:
+    if app_version is None:
+        try:
+            from market_forecaster.config import __version__ as app_version
+        except Exception:
+            app_version = "unknown"
+    record = build_consensus_audit_record(
+        ticker,
+        result,
+        ensemble_result,
+        stock_df,
+        app_version=str(app_version),
+        options_promotion=options_promotion,
+    )
+    return str(record["run_id"]), persist_audit_run(record, base_dir=base_dir)
+
+
+def _price_frame(stock_df: pd.DataFrame) -> pd.DataFrame:
+    if stock_df is None or stock_df.empty or "Date" not in stock_df.columns or "Close" not in stock_df.columns:
+        raise ValueError("Outcome reconciliation requires Date and Close")
+    dates = pd.to_datetime(stock_df["Date"], errors="coerce")
+    try:
+        dates = dates.dt.tz_localize(None)
+    except TypeError:
+        pass
+    close = stock_df["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    frame = pd.DataFrame({
+        "Date": dates.dt.normalize(),
+        "Close": pd.to_numeric(close, errors="coerce"),
+    })
+    return (
+        frame.dropna(subset=["Date", "Close"])
+        .sort_values("Date")
+        .drop_duplicates("Date", keep="last")
+        .reset_index(drop=True)
+    )
+
+
+def reconcile_matured_outcomes(
+    ticker: str,
+    stock_df: pd.DataFrame,
+    *,
+    base_dir: str | Path | None = None,
+) -> dict:
+    runs = load_audit_runs(ticker, base_dir=base_dir)
+    prices = _price_frame(stock_df)
+    if prices.empty:
+        return {"created": 0, "matured": 0, "pending": 0}
+
+    existing = load_audit_outcomes(ticker, base_dir=base_dir)
+    resolved = {(str(o.get("run_id")), int(o.get("horizon", 0))) for o in existing}
+    latest_date = pd.Timestamp(prices["Date"].max())
+    outcome_path = _ticker_path("outcomes", ticker, base_dir)
+    created = matured = pending = 0
+
+    for run in runs:
+        run_id = str(run.get("run_id", ""))
+        spot = _safe_float(run.get("spot"))
+        if not run_id or not np.isfinite(spot) or spot <= 0:
+            continue
+
+        for h_key, target in (run.get("targets", {}) or {}).items():
+            horizon = int(target.get("horizon", h_key))
+            key = (run_id, horizon)
+            if key in resolved:
+                matured += 1
+                continue
+
+            target_date = pd.to_datetime(target.get("target_date"), errors="coerce")
+            if pd.isna(target_date):
+                continue
+            target_date = pd.Timestamp(target_date).tz_localize(None).normalize()
+            if target_date > latest_date:
+                pending += 1
+                continue
+
+            eligible = prices[prices["Date"] >= target_date]
+            if eligible.empty:
+                pending += 1
+                continue
+            realized_row = eligible.iloc[0]
+            realized_date = pd.Timestamp(realized_row["Date"])
+            realized_price = float(realized_row["Close"])
+            realized_return = realized_price / spot - 1.0
+
+            scores = {}
+            for candidate, predicted in (target.get("predictions", {}) or {}).items():
+                predicted_price = _safe_float(predicted)
+                if not np.isfinite(predicted_price) or predicted_price <= 0:
+                    continue
+                predicted_return = predicted_price / spot - 1.0
+                if abs(realized_return) <= 1e-12:
+                    direction_correct = abs(predicted_return) <= 1e-12
+                else:
+                    direction_correct = np.sign(predicted_return) == np.sign(realized_return)
+                scores[str(candidate)] = {
+                    "predicted_price": predicted_price,
+                    "predicted_return": predicted_return,
+                    "absolute_return_error": abs(predicted_return - realized_return),
+                    "price_pct_error": abs(predicted_price - realized_price) / max(abs(realized_price), 1e-12) * 100.0,
+                    "direction_correct": bool(direction_correct),
+                }
+
+            outcome = {
+                "schema_version": 1,
+                "outcome_id": _canonical_hash({"run_id": run_id, "horizon": horizon})[:24],
+                "run_id": run_id,
+                "ticker": str(run.get("ticker", ticker)).upper(),
+                "horizon": horizon,
+                "target_date": target_date.isoformat(),
+                "realized_date": realized_date.isoformat(),
+                "realized_price": realized_price,
+                "realized_return": realized_return,
+                "scored_at_utc": datetime.now(timezone.utc).isoformat(),
+                "candidate_scores": scores,
+            }
+            if _append_jsonl_once(outcome_path, outcome, "outcome_id"):
+                created += 1
+                resolved.add(key)
+            matured += 1
+
+    return {
+        "created": created,
+        "matured": matured,
+        "pending": pending,
+        "latest_market_date": latest_date.date().isoformat(),
+    }
+
+
+def _latest_run_per_market_snapshot(runs: list[dict]) -> list[dict]:
+    selected = {}
+    for run in runs:
+        key = str(run.get("market_last_timestamp") or run.get("created_at_utc") or run.get("run_id"))
+        current = selected.get(key)
+        if current is None or str(run.get("created_at_utc", "")) >= str(current.get("created_at_utc", "")):
+            selected[key] = run
+    return list(selected.values())
+
+
+def governance_summary(
+    runs: list[dict],
+    outcomes: list[dict],
+    *,
+    min_observations: int = 20,
+    min_unique_runs: int = 5,
+    challenger_margin_pct: float = 5.0,
+) -> dict:
+    selected_runs = _latest_run_per_market_snapshot(runs)
+    selected_ids = {str(r.get("run_id")) for r in selected_runs}
+
+    buckets = {}
+    for outcome in outcomes:
+        run_id = str(outcome.get("run_id", ""))
+        if run_id not in selected_ids:
+            continue
+        for candidate, score in (outcome.get("candidate_scores", {}) or {}).items():
+            bucket = buckets.setdefault(candidate, {
+                "errors": [], "price_errors": [], "directions": [], "run_ids": set(),
+            })
+            err = _safe_float(score.get("absolute_return_error"))
+            price_err = _safe_float(score.get("price_pct_error"))
+            if np.isfinite(err):
+                bucket["errors"].append(err)
+            if np.isfinite(price_err):
+                bucket["price_errors"].append(price_err)
+            if "direction_correct" in score:
+                bucket["directions"].append(bool(score.get("direction_correct")))
+            bucket["run_ids"].add(run_id)
+
+    rows = []
+    for candidate, bucket in buckets.items():
+        n = len(bucket["errors"])
+        unique_runs = len(bucket["run_ids"])
+        rows.append({
+            "candidate": candidate,
+            "observations": n,
+            "unique_runs": unique_runs,
+            "mae_return_bps": float(np.mean(bucket["errors"]) * 10000) if n else None,
+            "median_abs_return_error_bps": float(np.median(bucket["errors"]) * 10000) if n else None,
+            "price_mape_pct": float(np.mean(bucket["price_errors"])) if bucket["price_errors"] else None,
+            "directional_accuracy_pct": float(np.mean(bucket["directions"]) * 100) if bucket["directions"] else None,
+            "eligible": bool(n >= int(min_observations) and unique_runs >= int(min_unique_runs)),
+        })
+
+    rows.sort(key=lambda r: (
+        not r["eligible"],
+        float("inf") if r["mae_return_bps"] is None else r["mae_return_bps"],
+    ))
+    eligible = [r for r in rows if r["eligible"]]
+    incumbent = next((r for r in rows if r["candidate"] == INCUMBENT_CANDIDATE), None)
+    leader = eligible[0] if eligible else None
+
+    status = "COLLECTING"
+    recommendation = "COLLECT_MORE_REALIZED_OUTCOMES"
+    improvement = None
+
+    if leader:
+        if incumbent and incumbent["eligible"]:
+            incumbent_mae = float(incumbent["mae_return_bps"])
+            leader_mae = float(leader["mae_return_bps"])
+            if incumbent_mae > 0:
+                improvement = (incumbent_mae - leader_mae) / incumbent_mae * 100.0
+
+            if leader["candidate"] == INCUMBENT_CANDIDATE:
+                status = "INCUMBENT_LEADS"
+                recommendation = "KEEP_INCUMBENT"
+            elif (
+                improvement is not None
+                and improvement >= float(challenger_margin_pct)
+                and (
+                    leader["directional_accuracy_pct"] is None
+                    or incumbent["directional_accuracy_pct"] is None
+                    or float(leader["directional_accuracy_pct"]) >= float(incumbent["directional_accuracy_pct"]) - 2.0
+                )
+            ):
+                status = "CHALLENGER_LEADS"
+                recommendation = "REVIEW_CHALLENGER_PROMOTION"
+            else:
+                status = "NO_CLEAR_CHALLENGER"
+                recommendation = "KEEP_INCUMBENT"
+        else:
+            status = "INCUMBENT_HISTORY_INSUFFICIENT"
+            recommendation = "COLLECT_INCUMBENT_OUTCOMES_BEFORE_PROMOTION"
+
+    return {
+        "status": status,
+        "recommendation": recommendation,
+        "incumbent": INCUMBENT_CANDIDATE,
+        "observed_leader": leader["candidate"] if leader else None,
+        "improvement_vs_incumbent_pct": improvement,
+        "minimum_observations": int(min_observations),
+        "minimum_unique_runs": int(min_unique_runs),
+        "selected_market_snapshots": len(selected_runs),
+        "leaderboard": rows,
+        "policy": "advisory_only_no_auto_promotion_in_v2_9",
+    }
+
+
+def audit_snapshot(ticker: str, *, base_dir: str | Path | None = None, run_limit: int = 500) -> dict:
+    runs = load_audit_runs(ticker, base_dir=base_dir, limit=run_limit)
+    outcomes = load_audit_outcomes(ticker, base_dir=base_dir)
+    target_count = sum(len(r.get("targets", {}) or {}) for r in runs)
+    resolved_count = len({(str(o.get("run_id")), int(o.get("horizon", 0))) for o in outcomes})
+    return {
+        "ticker": str(ticker).upper(),
+        "runs": len(runs),
+        "targets": target_count,
+        "resolved_targets": resolved_count,
+        "pending_targets": max(0, target_count - resolved_count),
+        "governance": governance_summary(runs, outcomes),
+        "recent_runs": runs[-20:],
+        "recent_outcomes": outcomes[-50:],
+    }

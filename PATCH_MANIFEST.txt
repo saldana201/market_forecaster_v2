@@ -1,20 +1,26 @@
-Market Forecaster Adaptive Options Promotion Patch 2.8.0
+Market Forecaster Forecast Audit + Governance Patch 2.9.0
 
 NEW
-- market_forecaster/core/options_promotion.py
-- market_forecaster/api/routes/options_promotion.py
-- market_forecaster/tests/test_options_promotion.py
+- market_forecaster/core/forecast_audit.py
+- market_forecaster/ui/governance_panel.py
+- market_forecaster/api/routes/audit.py
+- market_forecaster/tests/test_forecast_audit.py
 
-REPLACED
+PATCHED BY INSTALLER
 - market_forecaster/ui/consensus_panel.py
-
-INSTALLER PATCHES
+- market_forecaster/app.py
 - market_forecaster/api/main.py
-- market_forecaster/config.py (2.7.0 -> 2.8.0)
+- market_forecaster/config.py (2.8.0 -> 2.9.0)
 
-PRODUCTION RULES
-- v2.7 PASS required
-- latest OOS fold must beat baseline
-- current feature coverage >= 60%
-- options anchor weight hard-capped at 15%
-- automatic fallback to pre-options consensus
+RUNTIME
+- .local/forecast_audit/runs/<TICKER>.jsonl
+- .local/forecast_audit/outcomes/<TICKER>.jsonl
+
+POLICY
+- immutable run ledger
+- separate append-only outcome ledger
+- exact-rerun dedup
+- same-market-snapshot anti-overweighting
+- 20 resolved predictions + 5 market snapshots for eligibility
+- challenger needs >=5% realized MAE improvement for review
+- advisory only; no auto promotion/demotion

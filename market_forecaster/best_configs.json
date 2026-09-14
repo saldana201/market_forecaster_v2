@@ -34,17 +34,17 @@
   "AAOI": {
     "params": {
       "growth_mode": "linear",
-      "seasonality_mode": "multiplicative",
-      "cps": 0.07,
-      "sps": 4.5
+      "seasonality_mode": "additive",
+      "cps": 0.12,
+      "sps": 10.5
     },
     "metrics": {
-      "mape_mean": 35.86800637756948,
-      "mape_std": 6.5157554952483085,
-      "stability_score": 37.496945251381554,
-      "dir_accuracy": 50.0,
-      "folds": 2
+      "mape_mean": 28.442566524452396,
+      "mape_std": 0.0,
+      "stability_score": 28.442566524452396,
+      "dir_accuracy": 51.724137931034484,
+      "folds": 1
     },
-    "last_updated": "2026-09-14T14:29:26.345401"
+    "last_updated": "2026-09-14T17:32:44.159136"
   }
 }
