@@ -1,0 +1,35 @@
+{
+  "audit": {
+    "pending_targets": 4,
+    "resolved_targets": 0,
+    "runs": 1,
+    "targets": 4
+  },
+  "cadence_minutes": 30,
+  "cycle_status": "SUCCESS",
+  "deployment": {
+    "approved_champion": "adaptive_production_consensus",
+    "approved_drift_status": "COLLECTING",
+    "effective_champion": "adaptive_production_consensus",
+    "governance_recommendation": "COLLECT_MORE_REALIZED_OUTCOMES",
+    "incumbent_drift_status": "COLLECTING",
+    "policy_status": "DEFAULT_INCUMBENT"
+  },
+  "errors": [],
+  "freshness": {
+    "age": 0,
+    "age_unit": "calendar_days",
+    "last_market_date": "2026-09-14",
+    "provider": "yfinance",
+    "reason": "Latest market row is 0 calendar days old",
+    "status": "OK"
+  },
+  "last_run_utc": "2026-09-14T22:08:35.038982+00:00",
+  "reconciliation": {
+    "created": 0,
+    "latest_market_date": "2026-09-14",
+    "matured": 0,
+    "pending": 4
+  },
+  "ticker": "ETH-USD, SOL-USD"
+}

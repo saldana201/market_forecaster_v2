@@ -37,8 +37,6 @@ from market_forecaster.ui.options_panel import render_options_flow_panel
 from market_forecaster.ui.options_history_panel import render_options_history_panel
 from market_forecaster.ui.governance_panel import render_governance_panel
 from market_forecaster.ui.deployment_panel import render_deployment_policy_panel
-from market_forecaster.ui.operations_panel import render_operations_panel
-from market_forecaster.ui.provider_panel import render_provider_panel
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -52,7 +50,6 @@ from market_forecaster.core.sentiment import SentimentAnalyzer
 from market_forecaster.core.seasonal import SeasonalAnalyzer
 from market_forecaster.core.signals import compute_basic_signal, compute_integrated_signal
 from market_forecaster.core.options_flow_v2 import fetch_options_flow_v2, persist_options_snapshot
-from market_forecaster.core.operations import record_operation_event
 
 # AutoTune
 from market_forecaster.autotune.tuner import run_autotune
@@ -146,20 +143,9 @@ with tab_forecast:
         with st.spinner("Fetching data..."):
             stock_df = fetch_stock_data(req.ticker, req.period, req.interval)
             if stock_df.empty:
-                record_operation_event(req.ticker, "data_fetch", "ERROR", "Provider returned no market data")
                 st.error(f"No data available for {req.ticker}")
                 st.stop()
-            if stock_df.attrs.get("is_cached"):
-                record_operation_event(req.ticker, "data_provider", "WARN", "Last-known-good market-data cache is active", metadata={"provider": stock_df.attrs.get("provider"), "cache_age_days": stock_df.attrs.get("cache_age_days")})
-                st.warning(f"Market-data fallback: using {stock_df.attrs.get('provider')} last-known-good cache. Forecasts are running in degraded data mode.")
-            elif stock_df.attrs.get("provider_failover_used"):
-                record_operation_event(req.ticker, "data_provider", "WARN", "Secondary market-data provider is active", metadata={"provider": stock_df.attrs.get("provider")})
-                st.info(f"Primary market-data provider unavailable/rejected; using validated fallback provider: {stock_df.attrs.get('provider')}.")
             stock_df = add_technical_indicators(stock_df)
-            record_operation_event(
-                req.ticker, "data_fetch", "SUCCESS", "Market data fetch completed",
-                metadata={"rows": len(stock_df), "provider": stock_df.attrs.get("provider")},
-            )
 
         # ---- Patterns ----
         pattern_scores = detect_chart_patterns(stock_df)
@@ -228,7 +214,6 @@ with tab_forecast:
                         persist_options_snapshot(options_flow_data)
                     st.session_state["options_flow_v2"] = options_flow_data
                 except Exception as e:
-                    record_operation_event(req.ticker, "options_flow", "ERROR", str(e))
                     st.warning(f"Options flow error: {e}")
 
         if req.use_ensemble:
@@ -240,7 +225,6 @@ with tab_forecast:
                     )
                     st.session_state["ensemble_result"] = ensemble_result
                 except Exception as e:
-                    record_operation_event(req.ticker, "ensemble", "ERROR", str(e))
                     st.warning(f"Ensemble error: {e}")
 
         if req.use_sentiment:
@@ -249,7 +233,6 @@ with tab_forecast:
                     sentiment_data = SentimentAnalyzer().analyze(req.ticker)
                     st.session_state["sentiment_data"] = sentiment_data
                 except Exception as e:
-                    record_operation_event(req.ticker, "sentiment", "ERROR", str(e))
                     st.warning(f"Sentiment error: {e}")
 
         if req.use_seasonal:
@@ -261,7 +244,6 @@ with tab_forecast:
                     st.session_state["seasonal_analysis"] = seasonal_analysis
                     st.session_state["seasonal_signal"] = seasonal_signal
                 except Exception as e:
-                    record_operation_event(req.ticker, "seasonal", "ERROR", str(e))
                     st.warning(f"Seasonal error: {e}")
 
         # ---- Signal ----
@@ -316,10 +298,6 @@ with tab_forecast:
         )
 
         st.info(insight_text)
-        record_operation_event(
-            req.ticker, "forecast_pipeline", "SUCCESS", "Forecast pipeline completed",
-            metadata={"horizon": req.horizon, "ensemble_enabled": bool(req.use_ensemble)},
-        )
 
         # ---- Signal card ----
         c1, c2 = st.columns([1, 2])
@@ -503,10 +481,6 @@ if tab_backtest:
     with tab_backtest:
         st.header("🔁 Prophet Backtest")
         render_governance_panel(req.ticker, st.session_state.get("stock_df"))
-        st.markdown("---")
-        render_operations_panel(req.ticker, st.session_state.get("stock_df"))
-        st.markdown("---")
-        render_provider_panel(req.ticker, st.session_state.get("stock_df"), req.interval)
         st.markdown("---")
         render_deployment_policy_panel(req.ticker)
         st.markdown("---")

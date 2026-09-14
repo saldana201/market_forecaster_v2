@@ -13,7 +13,6 @@ from market_forecaster.core.options_promotion import (
 from market_forecaster.core.production_consensus import build_production_consensus
 from market_forecaster.core.forecast_audit import record_consensus_audit
 from market_forecaster.core.deployment_policy import build_deployment_decision
-from market_forecaster.core.operations import run_operations_cycle
 
 
 def render_production_consensus_panel(
@@ -81,12 +80,6 @@ def render_production_consensus_panel(
     except Exception as exc:
         st.caption(f"Forecast audit unavailable: {exc}")
 
-    try:
-        operations_cycle = run_operations_cycle(ticker, stock_df, force=False)
-        st.session_state["operations_cycle_state"] = operations_cycle
-    except Exception as exc:
-        st.caption(f"Operations maintenance unavailable: {exc}")
-    
     xgb_count = len(result.xgb_anchors)
     opt_count = len(result.options_anchors)
 

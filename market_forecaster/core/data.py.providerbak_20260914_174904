@@ -88,14 +88,35 @@ def fetch_stock_data(
     max_attempts: int = 3,
     backoff_seconds: float = 0.5,
 ) -> pd.DataFrame:
-    """Fetch validated market data with provider failover and LKG cache."""
-    from market_forecaster.core.data_providers import fetch_market_data_with_failover
+    """Fetch historical market data; returns an empty frame after provider failure."""
+    symbol = normalize_ticker(ticker)
+    last_error: Exception | None = None
 
-    return fetch_market_data_with_failover(
-        ticker, period, interval,
-        yfinance_attempts=max_attempts,
-        backoff_seconds=backoff_seconds,
-    )
+    for attempt in range(1, max(1, max_attempts) + 1):
+        try:
+            raw = yf.download(
+                symbol,
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+            return _clean_market_frame(raw, symbol)
+        except Exception as exc:  # provider exceptions vary by yfinance release
+            last_error = exc
+            logger.warning(
+                "market_data_fetch_failed ticker=%s attempt=%s/%s error=%s",
+                symbol,
+                attempt,
+                max_attempts,
+                type(exc).__name__,
+            )
+            if attempt < max_attempts:
+                time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+
+    logger.error("Market data unavailable for %s after retries: %s", symbol, last_error)
+    return pd.DataFrame()
 
 
 def data_freshness(df: pd.DataFrame) -> dict:

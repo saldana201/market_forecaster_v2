@@ -38,7 +38,6 @@ from market_forecaster.ui.options_history_panel import render_options_history_pa
 from market_forecaster.ui.governance_panel import render_governance_panel
 from market_forecaster.ui.deployment_panel import render_deployment_policy_panel
 from market_forecaster.ui.operations_panel import render_operations_panel
-from market_forecaster.ui.provider_panel import render_provider_panel
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -149,12 +148,6 @@ with tab_forecast:
                 record_operation_event(req.ticker, "data_fetch", "ERROR", "Provider returned no market data")
                 st.error(f"No data available for {req.ticker}")
                 st.stop()
-            if stock_df.attrs.get("is_cached"):
-                record_operation_event(req.ticker, "data_provider", "WARN", "Last-known-good market-data cache is active", metadata={"provider": stock_df.attrs.get("provider"), "cache_age_days": stock_df.attrs.get("cache_age_days")})
-                st.warning(f"Market-data fallback: using {stock_df.attrs.get('provider')} last-known-good cache. Forecasts are running in degraded data mode.")
-            elif stock_df.attrs.get("provider_failover_used"):
-                record_operation_event(req.ticker, "data_provider", "WARN", "Secondary market-data provider is active", metadata={"provider": stock_df.attrs.get("provider")})
-                st.info(f"Primary market-data provider unavailable/rejected; using validated fallback provider: {stock_df.attrs.get('provider')}.")
             stock_df = add_technical_indicators(stock_df)
             record_operation_event(
                 req.ticker, "data_fetch", "SUCCESS", "Market data fetch completed",
@@ -505,8 +498,6 @@ if tab_backtest:
         render_governance_panel(req.ticker, st.session_state.get("stock_df"))
         st.markdown("---")
         render_operations_panel(req.ticker, st.session_state.get("stock_df"))
-        st.markdown("---")
-        render_provider_panel(req.ticker, st.session_state.get("stock_df"), req.interval)
         st.markdown("---")
         render_deployment_policy_panel(req.ticker)
         st.markdown("---")
