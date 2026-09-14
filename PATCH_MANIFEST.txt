@@ -1,15 +1,20 @@
-Market Forecaster Historical Options Intelligence Patch 2.7.0
+Market Forecaster Adaptive Options Promotion Patch 2.8.0
 
-NEW PAYLOAD FILES
-- market_forecaster/core/historical_options.py
-- market_forecaster/ui/options_history_panel.py
-- market_forecaster/api/routes/options_history.py
-- market_forecaster/tests/test_historical_options.py
+NEW
+- market_forecaster/core/options_promotion.py
+- market_forecaster/api/routes/options_promotion.py
+- market_forecaster/tests/test_options_promotion.py
+
+REPLACED
+- market_forecaster/ui/consensus_panel.py
 
 INSTALLER PATCHES
-- market_forecaster/app.py
 - market_forecaster/api/main.py
-- market_forecaster/config.py (2.6.0 -> 2.7.0)
+- market_forecaster/config.py (2.7.0 -> 2.8.0)
 
-NO ROUTING CHANGES
-- Options features remain validation-only in 2.7.
+PRODUCTION RULES
+- v2.7 PASS required
+- latest OOS fold must beat baseline
+- current feature coverage >= 60%
+- options anchor weight hard-capped at 15%
+- automatic fallback to pre-options consensus
