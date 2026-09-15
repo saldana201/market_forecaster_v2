@@ -1,0 +1,120 @@
+{
+  "data_mode": "LIVE_PRIMARY",
+  "drift_status": "COLLECTING",
+  "effective_champion": "adaptive_production_consensus",
+  "generated_at_utc": "2026-09-15T01:43:59.237723+00:00",
+  "horizons": [
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": 0.047139981898514094,
+      "decision_target": 761.2386835793836,
+      "direction": "NEUTRAL",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 761.2386835793837,
+      "horizon": 1,
+      "invalidation": null,
+      "lower_bound": 732.7301378428142,
+      "notes": [
+        "No valid interval-side invalidation level is available.",
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 0.44035057052691245,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": 0.047139981898514094,
+      "recommendation": "WAIT",
+      "reference_entry": 760.8800048828125,
+      "resolved_observations": 0,
+      "reward_risk": null,
+      "target_date": "2026-09-15T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 789.7472293159533
+    },
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": 0.23941747944655756,
+      "decision_target": 762.7016846121157,
+      "direction": "NEUTRAL",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 762.7016846121159,
+      "horizon": 5,
+      "invalidation": null,
+      "lower_bound": 734.1931388755463,
+      "notes": [
+        "No valid interval-side invalidation level is available.",
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 2.2364799353418965,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": 0.23941747944655756,
+      "recommendation": "WAIT",
+      "reference_entry": 760.8800048828125,
+      "resolved_observations": 0,
+      "reward_risk": null,
+      "target_date": "2026-09-21T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 791.2102303486854
+    },
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": 0.3207560575363422,
+      "decision_target": 763.320573589057,
+      "direction": "BULLISH",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 763.320573589057,
+      "horizon": 10,
+      "invalidation": 734.8120278524874,
+      "lower_bound": 734.8120278524874,
+      "notes": [
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 3.620446193910586,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": 0.3207560575363422,
+      "recommendation": "RESEARCH_BULLISH",
+      "reference_entry": 760.8800048828125,
+      "resolved_observations": 0,
+      "reward_risk": 0.09362324906935872,
+      "target_date": "2026-09-28T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 791.8291193256265
+    },
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": 0.14536830918709942,
+      "decision_target": 761.9860832808533,
+      "direction": "NEUTRAL",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 761.9860832808533,
+      "horizon": 20,
+      "invalidation": null,
+      "lower_bound": 733.4775375442838,
+      "notes": [
+        "No valid interval-side invalidation level is available.",
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 1.3579347150553236,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": 0.14536830918709942,
+      "recommendation": "WAIT",
+      "reference_entry": 760.8800048828125,
+      "resolved_observations": 0,
+      "reward_risk": null,
+      "target_date": "2026-10-12T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 790.4946290174229
+    }
+  ],
+  "notes": [
+    "The decision layer is downstream of deployment governance and cannot change the production champion.",
+    "Probability-up is empirical residual calibration, not a guarantee of future direction.",
+    "Reference entry is the current observed close; target and invalidation come from the governed path and its interval."
+  ],
+  "policy_status": "DEFAULT_INCUMBENT",
+  "primary_horizon": 10,
+  "primary_recommendation": "RESEARCH_BULLISH",
+  "ticker": "SPY"
+}

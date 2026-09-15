@@ -1,32 +1,32 @@
-Market Forecaster Forecast Calibration + Decision Layer Patch 3.3.0
+Market Forecaster Multi-Ticker Opportunity Ranking Patch 3.4.0
 
 BASELINE
-- GitHub master v3.2.0
+- GitHub master v3.3.0
 
 NEW
-- core/decision_layer.py
-- ui/decision_panel.py
-- api/routes/decision.py
-- tests/test_decision_layer.py
+- core/opportunity_ranking.py
+- ui/ranking_panel.py
+- api/routes/opportunity_ranking.py
+- tests/test_opportunity_ranking.py
 
 PATCHED
-- ui/consensus_panel.py
+- app.py
 - api/main.py
-- config.py -> 3.3.0
+- config.py -> 3.4.0
 
-CALIBRATION POLICY
-- <8 outcomes: PROVISIONAL, no calibrated probability
-- 8-19 outcomes: LOW_SAMPLE, shrunk probability
-- >=20 outcomes + >=5 market snapshots: CALIBRATED
-- empirical residual-distribution calibration
-
-ACTION POLICY
-- calibrated evidence only
-- LONG: P(up)>=58%, expected>=1%, R/R>=1.5, score>=55
-- SHORT: P(up)<=42%, expected<=-1%, R/R>=1.5, score>=55
-- cached data blocks action
-- severe drift blocks action
+RANKING CONTROLS
+- 3.3 opportunity score is the starting point
+- evidence quality penalty
+- data mode penalty
+- drift penalty
+- decision staleness penalty
+- same-direction correlation penalty above +0.60
+- max 25% research risk-budget per symbol
+- max 15% if same-direction correlation >=0.85
 
 SAFETY
-- unique script-relative mf33_payload_v330
-- no generic repo-root payload
+- snapshot-driven: no silent multi-ticker forecast runs
+- no model/deployment changes
+- no auto-execution
+- unique script-relative mf34_payload_v340
+- no generic repo-root payload usage
