@@ -14,8 +14,6 @@ from market_forecaster.core.production_consensus import build_production_consens
 from market_forecaster.core.forecast_audit import record_consensus_audit
 from market_forecaster.core.deployment_policy import build_deployment_decision
 from market_forecaster.core.operations import run_operations_cycle
-from market_forecaster.core.decision_layer import build_decision_layer, persist_decision_snapshot
-from market_forecaster.ui.decision_panel import render_decision_panel
 
 
 def render_production_consensus_panel(
@@ -89,15 +87,6 @@ def render_production_consensus_panel(
     except Exception as exc:
         st.caption(f"Operations maintenance unavailable: {exc}")
     
-    decision_result = None
-    if deployment is not None and stock_df is not None and not getattr(stock_df, "empty", True):
-        try:
-            decision_result = build_decision_layer(ticker, deployment, stock_df)
-            persist_decision_snapshot(decision_result)
-            st.session_state["decision_layer_result"] = decision_result
-        except Exception as exc:
-            st.caption(f"Decision layer unavailable: {exc}")
-
     xgb_count = len(result.xgb_anchors)
     opt_count = len(result.options_anchors)
 
@@ -248,8 +237,6 @@ def render_production_consensus_panel(
         margin=dict(l=10, r=10, t=50, b=10),
     )
     st.plotly_chart(fig, use_container_width=True)
-
-    render_decision_panel(decision_result)
 
     if result.xgb_anchors:
         st.markdown("**XGBoost deployment anchors**")

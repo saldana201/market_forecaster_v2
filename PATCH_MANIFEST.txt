@@ -1,30 +1,32 @@
-Market Forecaster Provider Failover Patch 3.2.0
+Market Forecaster Forecast Calibration + Decision Layer Patch 3.3.0
 
 BASELINE
-- working local 3.1.0
+- GitHub master v3.2.0
 
 NEW
-- market_forecaster/core/data_providers.py
-- market_forecaster/ui/provider_panel.py
-- market_forecaster/api/routes/data_providers.py
-- market_forecaster/tests/test_data_providers.py
+- core/decision_layer.py
+- ui/decision_panel.py
+- api/routes/decision.py
+- tests/test_decision_layer.py
 
 PATCHED
-- market_forecaster/core/data.py
-- market_forecaster/core/operations.py
-- market_forecaster/app.py
-- market_forecaster/api/main.py
-- market_forecaster/config.py -> 3.2.0
+- ui/consensus_panel.py
+- api/main.py
+- config.py -> 3.3.0
 
-DEFAULT PROVIDER ORDER
-- yfinance
-- stooq
-- last-known-good cache
+CALIBRATION POLICY
+- <8 outcomes: PROVISIONAL, no calibrated probability
+- 8-19 outcomes: LOW_SAMPLE, shrunk probability
+- >=20 outcomes + >=5 market snapshots: CALIBRATED
+- empirical residual-distribution calibration
+
+ACTION POLICY
+- calibrated evidence only
+- LONG: P(up)>=58%, expected>=1%, R/R>=1.5, score>=55
+- SHORT: P(up)<=42%, expected<=-1%, R/R>=1.5, score>=55
+- cached data blocks action
+- severe drift blocks action
 
 SAFETY
-- provider quality gate before use
-- cache stores accepted live responses only
-- cached data visibly marked fallback/degraded
-- cache age limit
-- unique script-relative mf32_payload_v320
-- no generic repo-root payload usage
+- unique script-relative mf33_payload_v330
+- no generic repo-root payload

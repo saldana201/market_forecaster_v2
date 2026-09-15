@@ -1,0 +1,117 @@
+{
+  "data_mode": "LIVE_PRIMARY",
+  "drift_status": "COLLECTING",
+  "effective_champion": "adaptive_production_consensus",
+  "generated_at_utc": "2026-09-15T01:27:14.276768+00:00",
+  "horizons": [
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": -0.8508917259291131,
+      "decision_target": 2494.4923182420484,
+      "direction": "BEARISH",
+      "empirical_mae_bps": 166.20210616164698,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 2496.5830575553555,
+      "horizon": 1,
+      "invalidation": 3114.0803032034155,
+      "lower_bound": 1879.0858119072955,
+      "notes": [
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 1.9519763418319278,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": -0.7677906728482897,
+      "recommendation": "RESEARCH_BEARISH",
+      "reference_entry": 2515.89990234375,
+      "resolved_observations": 1,
+      "reward_risk": 0.0357878393724301,
+      "target_date": "2026-09-16T00:00:00",
+      "unique_market_snapshots": 1,
+      "upper_bound": 3114.0803032034155
+    },
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": -0.8555823205977142,
+      "decision_target": 2494.374307575362,
+      "direction": "BEARISH",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 2494.374307575362,
+      "horizon": 5,
+      "invalidation": 3111.871553223422,
+      "lower_bound": 1876.8770619273018,
+      "notes": [
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 1.4608695578472075,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": -0.8555823205977142,
+      "recommendation": "RESEARCH_BEARISH",
+      "reference_entry": 2515.89990234375,
+      "resolved_observations": 0,
+      "reward_risk": 0.036118487744535716,
+      "target_date": "2026-09-20T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 3111.871553223422
+    },
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": -1.84068632437554,
+      "decision_target": 2469.590076906331,
+      "direction": "BEARISH",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 2469.590076906331,
+      "horizon": 10,
+      "invalidation": 3087.087322554391,
+      "lower_bound": 1852.092831258271,
+      "notes": [
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 3.1653695131643045,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": -1.84068632437554,
+      "recommendation": "RESEARCH_BEARISH",
+      "reference_entry": 2515.89990234375,
+      "resolved_observations": 0,
+      "reward_risk": 0.08107640994674044,
+      "target_date": "2026-09-25T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 3087.087322554391
+    },
+    {
+      "actionable": false,
+      "calibrated_expected_return_pct": -1.647344043018928,
+      "decision_target": 2474.454375174171,
+      "direction": "BEARISH",
+      "empirical_mae_bps": null,
+      "evidence_status": "PROVISIONAL",
+      "forecast_target": 2474.454375174171,
+      "horizon": 20,
+      "invalidation": 3091.9516208222312,
+      "lower_bound": 1856.9571295261112,
+      "notes": [
+        "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
+      ],
+      "opportunity_score": 2.82880020430007,
+      "probability_up_pct": null,
+      "raw_forecast_return_pct": -1.647344043018928,
+      "recommendation": "RESEARCH_BEARISH",
+      "reference_entry": 2515.89990234375,
+      "resolved_observations": 0,
+      "reward_risk": 0.07194758012188276,
+      "target_date": "2026-10-05T00:00:00",
+      "unique_market_snapshots": 0,
+      "upper_bound": 3091.9516208222312
+    }
+  ],
+  "notes": [
+    "The decision layer is downstream of deployment governance and cannot change the production champion.",
+    "Probability-up is empirical residual calibration, not a guarantee of future direction.",
+    "Reference entry is the current observed close; target and invalidation come from the governed path and its interval."
+  ],
+  "policy_status": "DEFAULT_INCUMBENT",
+  "primary_horizon": 10,
+  "primary_recommendation": "RESEARCH_BEARISH",
+  "ticker": "ETH-USD"
+}
