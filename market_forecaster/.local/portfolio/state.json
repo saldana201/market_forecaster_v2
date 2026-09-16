@@ -1,0 +1,27 @@
+{
+  "cash": 0.0,
+  "positions": [
+    {
+      "cost_basis": 116.57,
+      "quantity": 17.0,
+      "ticker": "AAOI"
+    },
+    {
+      "cost_basis": 5.11,
+      "quantity": 700.0,
+      "ticker": "TMC"
+    },
+    {
+      "cost_basis": 2067.86,
+      "quantity": 5.5,
+      "ticker": "ETH-USD"
+    },
+    {
+      "cost_basis": 80.86,
+      "quantity": 60.34874011,
+      "ticker": "SOL-USD"
+    }
+  ],
+  "schema_version": 1,
+  "updated_at_utc": "2026-09-15T23:54:32.633250+00:00"
+}

@@ -1,32 +1,36 @@
-Market Forecaster Multi-Ticker Opportunity Ranking Patch 3.4.0
+Market Forecaster Portfolio State + Position-Aware Ranking Patch 3.5.0
 
 BASELINE
-- GitHub master v3.3.0
+- GitHub master v3.4.0
 
 NEW
-- core/opportunity_ranking.py
-- ui/ranking_panel.py
-- api/routes/opportunity_ranking.py
-- tests/test_opportunity_ranking.py
+- core/portfolio.py
+- ui/portfolio_panel.py
+- api/routes/portfolio.py
+- tests/test_portfolio.py
 
 PATCHED
 - app.py
 - api/main.py
-- config.py -> 3.4.0
+- config.py -> 3.5.0
 
-RANKING CONTROLS
-- 3.3 opportunity score is the starting point
-- evidence quality penalty
-- data mode penalty
-- drift penalty
-- decision staleness penalty
-- same-direction correlation penalty above +0.60
-- max 25% research risk-budget per symbol
-- max 15% if same-direction correlation >=0.85
+POSITION-AWARE CONTROLS
+- manual cash / position state
+- long and short quantity support
+- current price and unrealized P/L
+- single-name exposure limit
+- correlated same-direction cluster exposure
+- opposite-position conflict detection
+- governed invalidation breach review
+- 3.4 research budget can only be reduced, never increased
+
+DEFAULTS
+- 20% max single-name exposure
+- 40% max correlated-cluster exposure
+- 0.70 correlation threshold
 
 SAFETY
-- snapshot-driven: no silent multi-ticker forecast runs
-- no model/deployment changes
 - no auto-execution
-- unique script-relative mf34_payload_v340
+- no brokerage integration
+- unique script-relative mf35_payload_v350
 - no generic repo-root payload usage

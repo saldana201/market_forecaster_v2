@@ -1,9 +1,9 @@
 {
   "audit": {
-    "pending_targets": 76,
-    "resolved_targets": 0,
-    "runs": 19,
-    "targets": 76
+    "pending_targets": 63,
+    "resolved_targets": 21,
+    "runs": 21,
+    "targets": 84
   },
   "cadence_minutes": 30,
   "cycle_status": "SUCCESS",
@@ -17,19 +17,19 @@
   },
   "errors": [],
   "freshness": {
-    "age": 2,
+    "age": 0,
     "age_unit": "business_days",
-    "last_market_date": "2026-09-11",
+    "last_market_date": "2026-09-15",
     "provider": "yfinance",
-    "reason": "Latest market row is 2 business days old",
-    "status": "WARN"
+    "reason": "Latest market row is 0 business days old",
+    "status": "OK"
   },
-  "last_run_utc": "2026-09-15T01:34:15.955653+00:00",
+  "last_run_utc": "2026-09-15T23:48:47.084529+00:00",
   "reconciliation": {
-    "created": 0,
-    "latest_market_date": "2026-09-11",
-    "matured": 0,
-    "pending": 76
+    "created": 21,
+    "latest_market_date": "2026-09-15",
+    "matured": 21,
+    "pending": 63
   },
   "ticker": "AAOI"
 }

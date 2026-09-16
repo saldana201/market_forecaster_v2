@@ -1,9 +1,9 @@
 {
   "audit": {
-    "pending_targets": 4,
-    "resolved_targets": 0,
-    "runs": 1,
-    "targets": 4
+    "pending_targets": 10,
+    "resolved_targets": 2,
+    "runs": 3,
+    "targets": 12
   },
   "cadence_minutes": 30,
   "cycle_status": "SUCCESS",
@@ -19,17 +19,17 @@
   "freshness": {
     "age": 0,
     "age_unit": "calendar_days",
-    "last_market_date": "2026-09-14",
+    "last_market_date": "2026-09-15",
     "provider": "yfinance",
     "reason": "Latest market row is 0 calendar days old",
     "status": "OK"
   },
-  "last_run_utc": "2026-09-14T22:50:56.318096+00:00",
+  "last_run_utc": "2026-09-15T22:43:29.344511+00:00",
   "reconciliation": {
     "created": 0,
-    "latest_market_date": "2026-09-14",
-    "matured": 0,
-    "pending": 4
+    "latest_market_date": "2026-09-15",
+    "matured": 2,
+    "pending": 10
   },
   "ticker": "SOL-USD"
 }
