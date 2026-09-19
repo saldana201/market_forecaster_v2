@@ -43,7 +43,6 @@ from market_forecaster.ui.ranking_panel import render_opportunity_ranking_panel
 from market_forecaster.ui.portfolio_panel import render_portfolio_panel
 from market_forecaster.ui.research_panel import render_research_panel
 from market_forecaster.ui.feature_ablation_panel import render_feature_ablation_panel
-from market_forecaster.ui.uncertainty_panel import render_uncertainty_panel
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -520,8 +519,6 @@ if tab_backtest:
         render_research_panel(req.ticker)
         st.markdown("---")
         render_feature_ablation_panel(req.ticker)
-        st.markdown("---")
-        render_uncertainty_panel(req.ticker)
         st.markdown("---")
         render_deployment_policy_panel(req.ticker)
         st.markdown("---")

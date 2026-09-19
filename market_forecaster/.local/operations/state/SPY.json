@@ -1,9 +1,9 @@
 {
   "audit": {
-    "pending_targets": 18,
+    "pending_targets": 26,
     "resolved_targets": 6,
-    "runs": 6,
-    "targets": 24
+    "runs": 8,
+    "targets": 32
   },
   "cadence_minutes": 30,
   "cycle_status": "SUCCESS",
@@ -24,12 +24,12 @@
     "reason": "Latest market row is 1 business days old",
     "status": "OK"
   },
-  "last_run_utc": "2026-09-19T08:06:15.993439+00:00",
+  "last_run_utc": "2026-09-19T18:18:39.941841+00:00",
   "reconciliation": {
-    "created": 4,
+    "created": 0,
     "latest_market_date": "2026-09-18",
     "matured": 6,
-    "pending": 18
+    "pending": 26
   },
   "ticker": "SPY"
 }

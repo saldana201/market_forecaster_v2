@@ -3,18 +3,18 @@
   "period": "5y",
   "interval": "1d",
   "source_provider": "yfinance",
-  "cached_at_utc": "2026-09-15T23:49:51.941400+00:00",
-  "last_market_timestamp": "2026-09-15T00:00:00",
+  "cached_at_utc": "2026-09-19T18:24:18.438571+00:00",
+  "last_market_timestamp": "2026-09-18T00:00:00",
   "quality": {
     "provider": "yfinance",
     "status": "PASS",
     "score": 100.0,
-    "rows": 1254,
+    "rows": 1255,
     "required_complete_pct": 100.0,
     "ohlc_consistency_pct": 100.0,
     "positive_close_pct": 100.0,
     "duplicate_dates": 0,
     "notes": []
   },
-  "rows": 1254
+  "rows": 1255
 }

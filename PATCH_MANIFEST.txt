@@ -1,44 +1,45 @@
-Market Forecaster Feature Intelligence / Ablation Lab 3.8.0
+Market Forecaster Probability Calibration + Adaptive Uncertainty Patch 3.9.0
 
 BASELINE
-- GitHub master v3.7.0
+- GitHub master v3.8.0
 
 SCOPE
-- forecasting features only
-- no trading/execution expansion
+- forecast uncertainty and probabilistic calibration
+- no execution/trading expansion
+- no automatic production promotion
 - AI Reporter remains separate
-- no fake historical options/news features
 
 NEW
-- core/market_context.py
-- core/feature_ablation.py
-- ui/feature_ablation_panel.py
-- api/routes/feature_ablation.py
-- scripts/feature_ablation.py
-- tests/test_market_context.py
-- tests/test_feature_ablation.py
+- core/uncertainty_calibration.py
+- ui/uncertainty_panel.py
+- api/routes/uncertainty.py
+- scripts/uncertainty_research.py
+- tests/test_uncertainty_calibration.py
 
 PATCHED
 - app.py
 - api/main.py
-- config.py -> 3.8.0
+- config.py -> 3.9.0
 
-FEATURE FAMILIES
-- SPY/QQQ broad market
-- VIX
-- 10Y Treasury yield proxy
-- HYG/LQD credit proxies
-- U.S. dollar proxy
-- optional sector ETF
+CALIBRATION
+- prior-OOS folds only
+- logistic P(up) calibration
+- Beta-smoothed fallback
+- Brier score
+- Brier skill vs 50%
+- expected calibration error
 
-VALIDATION
-- base vs base+one-family
-- identical fold/date signature required
-- paired OOS MAE lift
-- directional-accuracy delta
-- no production promotion
+UNCERTAINTY
+- rolling absolute OOS residual calibration
+- finite-sample conservative quantiles
+- 80% and 90% return intervals
+- converted 80% and 90% price ranges
+- empirical coverage diagnostics
+- rolling calibration windows: 60/120/250/all
 
-INSTALLER
-- preflights all anchors and Python syntax before writes
-- unique mf38_payload_v380
-- timestamped .patch_backups/v3_8_* backup set
+SAFETY
+- same-fold labels cannot calibrate same-fold predictions
+- research-only
+- installer preflights anchors and syntax before writes
+- timestamped .patch_backups/v3_9_* backup set
+- unique mf39_payload_v390

@@ -2,7 +2,7 @@
   "data_mode": "LIVE_PRIMARY",
   "drift_status": "COLLECTING",
   "effective_champion": "adaptive_production_consensus",
-  "generated_at_utc": "2026-09-19T08:18:20.506527+00:00",
+  "generated_at_utc": "2026-09-19T18:18:39.998236+00:00",
   "horizons": [
     {
       "actionable": false,
@@ -57,28 +57,28 @@
     },
     {
       "actionable": false,
-      "calibrated_expected_return_pct": 0.2934086741501085,
-      "decision_target": 763.9248669787036,
+      "calibrated_expected_return_pct": 0.2934086741500641,
+      "decision_target": 763.9248669787032,
       "direction": "BULLISH",
       "empirical_mae_bps": null,
       "evidence_status": "PROVISIONAL",
-      "forecast_target": 763.9248669787034,
+      "forecast_target": 763.9248669787032,
       "horizon": 10,
-      "invalidation": 753.0070252962887,
-      "lower_bound": 753.0070252962887,
+      "invalidation": 753.0070252962885,
+      "lower_bound": 753.0070252962885,
       "notes": [
         "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
       ],
-      "opportunity_score": 8.880340687701377,
+      "opportunity_score": 8.880340687699984,
       "probability_up_pct": null,
-      "raw_forecast_return_pct": 0.2934086741501085,
+      "raw_forecast_return_pct": 0.2934086741500641,
       "recommendation": "RESEARCH_BULLISH",
       "reference_entry": 761.6900024414062,
       "resolved_observations": 0,
-      "reward_risk": 0.25738459285868104,
+      "reward_risk": 0.257384592858635,
       "target_date": "2026-10-02T00:00:00",
       "unique_market_snapshots": 0,
-      "upper_bound": 774.8427086611182
+      "upper_bound": 774.842708661118
     },
     {
       "actionable": false,
@@ -87,23 +87,23 @@
       "direction": "BULLISH",
       "empirical_mae_bps": null,
       "evidence_status": "PROVISIONAL",
-      "forecast_target": 764.1291688353461,
+      "forecast_target": 764.129168835346,
       "horizon": 20,
-      "invalidation": 753.2113271529314,
-      "lower_bound": 753.2113271529314,
+      "invalidation": 753.2113271529313,
+      "lower_bound": 753.2113271529313,
       "notes": [
         "Fewer than 8 resolved outcomes: no calibrated probability is emitted."
       ],
-      "opportunity_score": 9.737269740388513,
+      "opportunity_score": 9.737269740388426,
       "probability_up_pct": null,
       "raw_forecast_return_pct": 0.32023085325023626,
       "recommendation": "RESEARCH_BULLISH",
       "reference_entry": 761.6900024414062,
       "resolved_observations": 0,
-      "reward_risk": 0.28768248705732186,
+      "reward_risk": 0.28768248705731797,
       "target_date": "2026-10-16T00:00:00",
       "unique_market_snapshots": 0,
-      "upper_bound": 775.047010517761
+      "upper_bound": 775.0470105177609
     }
   ],
   "notes": [

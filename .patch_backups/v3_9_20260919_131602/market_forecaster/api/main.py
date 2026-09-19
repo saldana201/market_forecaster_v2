@@ -32,7 +32,6 @@ from market_forecaster.api.routes import opportunity_ranking as opportunity_rank
 from market_forecaster.api.routes import portfolio as portfolio_routes
 from market_forecaster.api.routes import research as research_routes
 from market_forecaster.api.routes import feature_ablation as feature_ablation_routes
-from market_forecaster.api.routes import uncertainty as uncertainty_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
 from market_forecaster.config import DISCLAIMER, __version__
@@ -84,7 +83,6 @@ app.include_router(opportunity_ranking_routes.router, prefix="/api/v1", tags=["O
 app.include_router(portfolio_routes.router, prefix="/api/v1", tags=["Portfolio"], dependencies=protected)
 app.include_router(research_routes.router, prefix="/api/v1", tags=["Forecast Research"], dependencies=protected)
 app.include_router(feature_ablation_routes.router, prefix="/api/v1", tags=["Feature Ablation"], dependencies=protected)
-app.include_router(uncertainty_routes.router, prefix="/api/v1", tags=["Forecast Uncertainty"], dependencies=protected)
 
 
 @app.exception_handler(RequestValidationError)
