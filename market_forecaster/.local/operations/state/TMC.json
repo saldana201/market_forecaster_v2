@@ -1,9 +1,9 @@
 {
   "audit": {
-    "pending_targets": 26,
-    "resolved_targets": 2,
-    "runs": 7,
-    "targets": 28
+    "pending_targets": 28,
+    "resolved_targets": 8,
+    "runs": 9,
+    "targets": 36
   },
   "cadence_minutes": 30,
   "cycle_status": "SUCCESS",
@@ -19,17 +19,17 @@
   "freshness": {
     "age": 0,
     "age_unit": "business_days",
-    "last_market_date": "2026-09-15",
+    "last_market_date": "2026-09-19",
     "provider": "yfinance",
     "reason": "Latest market row is 0 business days old",
     "status": "OK"
   },
-  "last_run_utc": "2026-09-15T23:35:53.107065+00:00",
+  "last_run_utc": "2026-09-19T08:40:31.866032+00:00",
   "reconciliation": {
-    "created": 0,
-    "latest_market_date": "2026-09-15",
-    "matured": 2,
-    "pending": 26
+    "created": 6,
+    "latest_market_date": "2026-09-19",
+    "matured": 8,
+    "pending": 28
   },
   "ticker": "TMC"
 }

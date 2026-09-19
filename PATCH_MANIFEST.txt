@@ -1,52 +1,44 @@
-Market Forecaster Model Tournament Patch 3.7.0
+Market Forecaster Feature Intelligence / Ablation Lab 3.8.0
 
 BASELINE
-- GitHub master v3.6.0
+- GitHub master v3.7.0
 
 SCOPE
-- forecasting research only
-- no trading/execution additions
+- forecasting features only
+- no trading/execution expansion
 - AI Reporter remains separate
+- no fake historical options/news features
 
 NEW
-- core/model_tournament.py
-- tests/test_model_tournament.py
-- tests/test_tournament_runner.py
-- requirements-research-models.txt (optional only)
+- core/market_context.py
+- core/feature_ablation.py
+- ui/feature_ablation_panel.py
+- api/routes/feature_ablation.py
+- scripts/feature_ablation.py
+- tests/test_market_context.py
+- tests/test_feature_ablation.py
 
-REPLACED / UPGRADED
-- core/experiment_runner.py
-- ui/research_panel.py
-- api/routes/research.py
-- scripts/research_experiment.py
-- config.py -> 3.7.0
+PATCHED
+- app.py
+- api/main.py
+- config.py -> 3.8.0
 
-MODEL SET
-- zero return
-- historical mean
-- Ridge
-- Elastic Net
-- Random Forest
-- HistGradientBoosting
-- XGBoost reference
-- LightGBM optional
-- CatBoost optional
-- LSTM optional
-- causal TCN optional
-- Transformer optional
+FEATURE FAMILIES
+- SPY/QQQ broad market
+- VIX
+- 10Y Treasury yield proxy
+- HYG/LQD credit proxies
+- U.S. dollar proxy
+- optional sector ETF
 
 VALIDATION
-- same 3.6 causal feature store
-- same 1D/5D/10D/20D targets
-- same expanding-window folds
-- same horizon-aware embargo
-- paired lift vs zero return
-- paired lift vs XGBoost
-- descriptive per-horizon tournament rank
+- base vs base+one-family
+- identical fold/date signature required
+- paired OOS MAE lift
+- directional-accuracy delta
+- no production promotion
 
-SAFETY
-- no production promotion path
-- no champion/deployment mutation
-- no ranking/portfolio mutation
-- production requirements unchanged
-- unique script-relative mf37_payload_v370
+INSTALLER
+- preflights all anchors and Python syntax before writes
+- unique mf38_payload_v380
+- timestamped .patch_backups/v3_8_* backup set
