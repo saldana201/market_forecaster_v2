@@ -2,7 +2,7 @@
   "data_mode": "LIVE_PRIMARY",
   "drift_status": "COLLECTING",
   "effective_champion": "adaptive_production_consensus",
-  "generated_at_utc": "2026-09-19T18:24:18.053364+00:00",
+  "generated_at_utc": "2026-09-19T18:35:13.780970+00:00",
   "horizons": [
     {
       "actionable": false,

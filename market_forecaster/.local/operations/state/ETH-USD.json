@@ -1,9 +1,9 @@
 {
   "audit": {
-    "pending_targets": 39,
+    "pending_targets": 51,
     "resolved_targets": 9,
-    "runs": 12,
-    "targets": 48
+    "runs": 15,
+    "targets": 60
   },
   "cadence_minutes": 30,
   "cycle_status": "SUCCESS",
@@ -24,12 +24,12 @@
     "reason": "Latest market row is 1 calendar days old",
     "status": "OK"
   },
-  "last_run_utc": "2026-09-19T08:25:54.864282+00:00",
+  "last_run_utc": "2026-09-19T18:35:55.102163+00:00",
   "reconciliation": {
     "created": 0,
     "latest_market_date": "2026-09-18",
     "matured": 9,
-    "pending": 39
+    "pending": 51
   },
   "ticker": "ETH-USD"
 }

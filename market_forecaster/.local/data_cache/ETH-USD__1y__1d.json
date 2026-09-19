@@ -3,7 +3,7 @@
   "period": "1y",
   "interval": "1d",
   "source_provider": "yfinance",
-  "cached_at_utc": "2026-09-19T08:53:04.421085+00:00",
+  "cached_at_utc": "2026-09-19T18:42:48.764238+00:00",
   "last_market_timestamp": "2026-09-19T00:00:00",
   "quality": {
     "provider": "yfinance",
