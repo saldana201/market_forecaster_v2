@@ -1,7 +1,7 @@
 {
   "audit": {
-    "pending_targets": 25,
-    "resolved_targets": 3,
+    "pending_targets": 19,
+    "resolved_targets": 9,
     "runs": 7,
     "targets": 28
   },
@@ -19,17 +19,17 @@
   "freshness": {
     "age": 0,
     "age_unit": "calendar_days",
-    "last_market_date": "2026-09-15",
+    "last_market_date": "2026-09-19",
     "provider": "yfinance",
     "reason": "Latest market row is 0 calendar days old",
     "status": "OK"
   },
-  "last_run_utc": "2026-09-15T20:33:33.693691+00:00",
+  "last_run_utc": "2026-09-19T07:14:48.271807+00:00",
   "reconciliation": {
-    "created": 0,
-    "latest_market_date": "2026-09-15",
-    "matured": 3,
-    "pending": 25
+    "created": 6,
+    "latest_market_date": "2026-09-19",
+    "matured": 9,
+    "pending": 19
   },
   "ticker": "ETH-USD"
 }

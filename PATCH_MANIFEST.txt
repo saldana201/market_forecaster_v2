@@ -1,36 +1,42 @@
-Market Forecaster Portfolio State + Position-Aware Ranking Patch 3.5.0
+Market Forecaster Research & Forecasting Foundation Patch 3.6.0
 
 BASELINE
-- GitHub master v3.4.0
+- GitHub master v3.5.0
+
+SCOPE
+- future market-price forecasting and validation
+- AI Reporter remains separate
+- no new trading/execution functionality
 
 NEW
-- core/portfolio.py
-- ui/portfolio_panel.py
-- api/routes/portfolio.py
-- tests/test_portfolio.py
+- core/targets.py
+- core/feature_store.py
+- core/experiment_runner.py
+- ui/research_panel.py
+- api/routes/research.py
+- scripts/research_experiment.py
+- tests/test_research_targets.py
+- tests/test_feature_store.py
+- tests/test_experiment_runner.py
 
 PATCHED
 - app.py
 - api/main.py
-- config.py -> 3.5.0
+- config.py -> 3.6.0
 
-POSITION-AWARE CONTROLS
-- manual cash / position state
-- long and short quantity support
-- current price and unrealized P/L
-- single-name exposure limit
-- correlated same-direction cluster exposure
-- opposite-position conflict detection
-- governed invalidation breach review
-- 3.4 research budget can only be reduced, never increased
-
-DEFAULTS
-- 20% max single-name exposure
-- 40% max correlated-cluster exposure
-- 0.70 correlation threshold
+PROTOCOL
+- 1D/5D/10D/20D cumulative log-return targets
+- explicit target-end timestamps
+- expanding-window chronological validation
+- embargo >= horizon
+- target-overlap assertion
+- mandatory zero-return baseline
+- identical folds/features for all models
+- paired fold improvement CI
+- research-only statuses
 
 SAFETY
-- no auto-execution
-- no brokerage integration
-- unique script-relative mf35_payload_v350
-- no generic repo-root payload usage
+- no production promotion path
+- no ranking/portfolio mutation
+- unique script-relative mf36_payload_v360
+- no generic payload directory
