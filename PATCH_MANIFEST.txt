@@ -1,42 +1,52 @@
-Market Forecaster Research & Forecasting Foundation Patch 3.6.0
+Market Forecaster Model Tournament Patch 3.7.0
 
 BASELINE
-- GitHub master v3.5.0
+- GitHub master v3.6.0
 
 SCOPE
-- future market-price forecasting and validation
+- forecasting research only
+- no trading/execution additions
 - AI Reporter remains separate
-- no new trading/execution functionality
 
 NEW
-- core/targets.py
-- core/feature_store.py
+- core/model_tournament.py
+- tests/test_model_tournament.py
+- tests/test_tournament_runner.py
+- requirements-research-models.txt (optional only)
+
+REPLACED / UPGRADED
 - core/experiment_runner.py
 - ui/research_panel.py
 - api/routes/research.py
 - scripts/research_experiment.py
-- tests/test_research_targets.py
-- tests/test_feature_store.py
-- tests/test_experiment_runner.py
+- config.py -> 3.7.0
 
-PATCHED
-- app.py
-- api/main.py
-- config.py -> 3.6.0
+MODEL SET
+- zero return
+- historical mean
+- Ridge
+- Elastic Net
+- Random Forest
+- HistGradientBoosting
+- XGBoost reference
+- LightGBM optional
+- CatBoost optional
+- LSTM optional
+- causal TCN optional
+- Transformer optional
 
-PROTOCOL
-- 1D/5D/10D/20D cumulative log-return targets
-- explicit target-end timestamps
-- expanding-window chronological validation
-- embargo >= horizon
-- target-overlap assertion
-- mandatory zero-return baseline
-- identical folds/features for all models
-- paired fold improvement CI
-- research-only statuses
+VALIDATION
+- same 3.6 causal feature store
+- same 1D/5D/10D/20D targets
+- same expanding-window folds
+- same horizon-aware embargo
+- paired lift vs zero return
+- paired lift vs XGBoost
+- descriptive per-horizon tournament rank
 
 SAFETY
 - no production promotion path
+- no champion/deployment mutation
 - no ranking/portfolio mutation
-- unique script-relative mf36_payload_v360
-- no generic payload directory
+- production requirements unchanged
+- unique script-relative mf37_payload_v370

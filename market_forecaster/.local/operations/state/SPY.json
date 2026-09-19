@@ -1,9 +1,9 @@
 {
   "audit": {
-    "pending_targets": 14,
-    "resolved_targets": 2,
-    "runs": 4,
-    "targets": 16
+    "pending_targets": 18,
+    "resolved_targets": 6,
+    "runs": 6,
+    "targets": 24
   },
   "cadence_minutes": 30,
   "cycle_status": "SUCCESS",
@@ -17,19 +17,19 @@
   },
   "errors": [],
   "freshness": {
-    "age": 0,
+    "age": 1,
     "age_unit": "business_days",
-    "last_market_date": "2026-09-15",
+    "last_market_date": "2026-09-18",
     "provider": "yfinance",
-    "reason": "Latest market row is 0 business days old",
+    "reason": "Latest market row is 1 business days old",
     "status": "OK"
   },
-  "last_run_utc": "2026-09-15T23:19:46.839841+00:00",
+  "last_run_utc": "2026-09-19T08:06:15.993439+00:00",
   "reconciliation": {
-    "created": 2,
-    "latest_market_date": "2026-09-15",
-    "matured": 2,
-    "pending": 14
+    "created": 4,
+    "latest_market_date": "2026-09-18",
+    "matured": 6,
+    "pending": 18
   },
   "ticker": "SPY"
 }
