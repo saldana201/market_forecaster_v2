@@ -1,63 +1,53 @@
-Market Forecaster Forecast Intelligence Platform Patch 4.0.0
+Market Forecaster UI/UX Simplification Patch 4.0.1
 
 BASELINE
-- GitHub master v3.9.0
+- GitHub master v4.0.0
 
-PURPOSE
-- consolidate forecasting research into one canonical authority/contract boundary
-- preserve separation from the user's Trading Engine
-- no AI Reporter dependency
+NEW UI
+- ui/forecast_dashboard.py
+- ui/research_workspace.py
+- ui/system_health_workspace.py
+- ui/advanced_tools_panel.py
 
-NEW CORE
-- core/forecast_authority.py
-- core/research_snapshots.py
-- core/forecast_contract.py
-- core/cross_ticker_validation.py
-
-NEW UI/API/CLI
-- ui/forecast_intelligence_panel.py
-- api/routes/forecast_intelligence.py
-- scripts/forecast_contract.py
-- scripts/cross_ticker_validation.py
-
-TESTS
-- test_forecast_authority.py
-- test_research_snapshots.py
-- test_forecast_contract.py
-- test_cross_ticker_validation.py
+REPLACED
+- ui/sidebar.py
 
 PATCHED
 - app.py
-- api/main.py
-- config.py -> 4.0.0
+- config.py -> 4.0.1
 
-FORECAST AUTHORITY
-- explicit model by 1D/5D/10D/20D
-- optional one 3.8 context family per horizon
-- explicit calibration window
-- no auto-promotion
-- atomic persistence
+TESTS
+- tests/test_forecast_dashboard.py
 
-CONTRACT
-- forecast-only schema
-- calibrated P(up)
-- 80/90 ranges
-- calibration diagnostics
-- model/feature provenance
-- data-quality provenance
-- explicit PARTIAL/UNAVAILABLE errors
-- forbidden execution-field assertion
+NEW DEFAULT NAVIGATION
+- Forecast
+- Research Lab
+- System Health
+- Advanced
+- Help
 
-SNAPSHOTS
-- atomic history + latest.json
-- .local/forecast_contracts/<TICKER>/
+FORECAST DEFAULT
+- powered by canonical 4.0 Forecast Contract
+- plain-language metrics
+- 1D/5D/10D/20D outlook
+- expected range chart
+- progressive disclosure for technical details
 
-CROSS-TICKER
-- same authority across multiple tickers
-- aggregate Brier/ECE/coverage/sample diagnostics
-- no authority mutation
+RESEARCH
+- guided 4-step workflow
+
+SYSTEM HEALTH
+- provider/data status
+- operations/governance
+- validation diagnostics
+
+ADVANCED
+- retains old Prophet/ensemble/sentiment/seasonal/pattern tools
+- retains ranking/portfolio compatibility tools
+- old Trading Signal label changed to Legacy Model Signal
 
 INSTALLER
-- all payload syntax + patch anchors preflighted before writes
-- timestamped .patch_backups/v4_0_*
-- unique mf40_payload_v400
+- payload syntax preflight
+- app/config patch preflight before writes
+- timestamped .patch_backups/v4_0_1_*
+- unique mf401_payload_v401

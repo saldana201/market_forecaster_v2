@@ -3,8 +3,8 @@
   "period": "10y",
   "interval": "1d",
   "source_provider": "yfinance",
-  "cached_at_utc": "2026-09-19T18:43:39.517518+00:00",
-  "last_market_timestamp": "2026-09-19T00:00:00",
+  "cached_at_utc": "2026-09-20T00:46:00.447396+00:00",
+  "last_market_timestamp": "2026-09-20T00:00:00",
   "quality": {
     "provider": "yfinance",
     "status": "PASS",

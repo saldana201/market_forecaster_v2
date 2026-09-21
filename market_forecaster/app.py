@@ -45,6 +45,10 @@ from market_forecaster.ui.research_panel import render_research_panel
 from market_forecaster.ui.feature_ablation_panel import render_feature_ablation_panel
 from market_forecaster.ui.uncertainty_panel import render_uncertainty_panel
 from market_forecaster.ui.forecast_intelligence_panel import render_forecast_intelligence_panel
+from market_forecaster.ui.forecast_dashboard import render_forecast_dashboard
+from market_forecaster.ui.research_workspace import render_research_workspace
+from market_forecaster.ui.system_health_workspace import render_system_health_workspace
+from market_forecaster.ui.advanced_tools_panel import render_advanced_tools_panel
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -78,34 +82,56 @@ req = render_sidebar()
 # ===================================================================
 st.title("📊 Market Forecaster")
 st.write(
-    "Forecast and validate future market-price scenarios for stocks & crypto. "
-    "Built around leakage-controlled research, uncertainty, and repeatable out-of-sample evidence."
+    "Clear multi-horizon market forecasts first. Research, system diagnostics, "
+    "and legacy model controls are available when you need them."
 )
 
 if is_analyst():
     model_availability_badges()
 
 # ===================================================================
-# Tabs — progressive based on mode
+# Workspaces — forecast first, complexity on demand (4.0.1)
 # ===================================================================
-if get_mode() == "Simple":
-    tabs = st.tabs(["🔮 Forecast", "📚 Help"])
-    tab_forecast, tab_help = tabs
-    tab_ensemble = tab_sentiment = tab_seasonal = tab_backtest = tab_patterns = None
-elif get_mode() == "Trader":
-    tabs = st.tabs(["🔮 Forecast", "📊 Ensemble", "📅 Seasonal", "🔁 Backtest", "📚 Help"])
-    tab_forecast, tab_ensemble, tab_seasonal, tab_backtest, tab_help = tabs
-    tab_sentiment = tab_patterns = None
-else:  # Analyst
-    tabs = st.tabs(["🔮 Forecast", "📊 Ensemble", "💭 Sentiment", "📅 Seasonal", "🔁 Backtest", "📈 Patterns", "📚 Help"])
-    tab_forecast, tab_ensemble, tab_sentiment, tab_seasonal, tab_backtest, tab_patterns, tab_help = tabs
+tab_forecast, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
+    "🔮 Forecast",
+    "🧪 Research Lab",
+    "🩺 System Health",
+    "⚙️ Advanced",
+    "📚 Help",
+])
+
+# Legacy sections remain available inside Advanced instead of appearing as
+# top-level product concepts. Backtest/research diagnostics are handled by
+# the dedicated Research Lab and System Health workspaces.
+tab_ensemble = tab_advanced if is_trader() else None
+tab_sentiment = tab_advanced if is_analyst() else None
+tab_seasonal = tab_advanced if is_trader() else None
+tab_patterns = tab_advanced if is_analyst() else None
+tab_backtest = None
+
+with tab_forecast:
+    render_forecast_dashboard(req.ticker)
+
+with tab_research:
+    render_research_workspace(req.ticker)
+
+with tab_health:
+    render_system_health_workspace(req)
+
+with tab_advanced:
+    st.header("Advanced / Legacy Tools")
+    st.caption(
+        "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
+        "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
+    )
+    render_advanced_tools_panel(req.ticker)
 
 
 # ===================================================================
 # AutoTune handler (runs before forecast if triggered)
 # ===================================================================
 if st.session_state.pop("run_autotune", False):
-    with tab_forecast:
+    with tab_advanced:
         st.subheader(f"🔧 AutoTune for {req.ticker}")
         result = run_autotune(req, st.session_state.get("autotune_budget", "Balanced (24)"))
 
@@ -142,9 +168,9 @@ if st.session_state.pop("run_autotune", False):
 
 
 # ===================================================================
-# Forecast tab
+# Advanced legacy forecast workflow
 # ===================================================================
-with tab_forecast:
+with tab_advanced:
     if st.button("🚀 Run Forecast", type="primary", use_container_width=True):
         st.header(f"📈 {req.ticker}")
 
@@ -332,7 +358,7 @@ with tab_forecast:
         with c1:
             signal_card(
                 active_signal.signal, active_signal.score, active_signal.confidence,
-                label="Integrated Signal" if integrated else "Trading Signal",
+                label="Legacy Integrated Signal" if integrated else "Legacy Model Signal",
             )
         with c2:
             if is_trader() and active_signal.components:
@@ -590,15 +616,16 @@ with tab_help:
 ### Quick Start (30 seconds)
 1. Enter a ticker in the sidebar (e.g. `AAPL`, `SPY`, `ETH-USD`)
 2. Pick a preset or leave defaults
-3. Click **🚀 Run Forecast**
-4. Read the plain-English insight at the top of the results
+3. Open **Forecast** and click **Generate Forecast** (or **Refresh Forecast**)
+4. Read the plain-English outlook, probability, and expected range
 
-### Modes
-- **Simple** — Ticker + preset + one-click forecast. Best for quick checks.
-- **Trader** — Adds horizon/holdout controls, AutoTune, backtest, ensemble, and exports.
-- **Analyst** — Full access to Prophet parameters, pattern diagnostics, and all model internals.
+### Workspaces
+- **Forecast** — plain-language 1D / 5D / 10D / 20D outlook from the canonical Forecast Contract.
+- **Research Lab** — guided model, feature, calibration, and Forecast Authority research.
+- **System Health** — data freshness, providers, operations, governance, and validation diagnostics.
+- **Advanced** — legacy Prophet/ensemble tools and expert controls kept for comparison and compatibility.
 
-### AutoTune (Trader mode)
+### Advanced / Legacy AutoTune
 AutoTune searches for the best Prophet configuration by testing different combinations of
 changepoint and seasonality parameters, then scoring them with a **stability penalty**:
 
@@ -616,8 +643,8 @@ lucky on one window. Results are saved per-ticker so you can reload them instant
 | sMAPE | Symmetric percentage (handles near-zero better) |
 | Dir. Accuracy | % of days where predicted direction matches actual |
 
-### Signals
-The integrated signal combines technical indicators (20%), chart patterns (15%),
+### Legacy Signals
+The Advanced workspace retains the older integrated signal for comparison. It combines technical indicators (20%), chart patterns (15%),
 options flow (15%), ensemble models (20%), sentiment (15%), and seasonal factors (15%).
 
 ### Limitations

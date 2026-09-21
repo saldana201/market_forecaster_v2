@@ -1,0 +1,247 @@
+{
+  "as_of": "2026-09-18 00:00:00",
+  "authority": [
+    {
+      "calibration_window": 120,
+      "context_family": "none",
+      "horizon_days": 1,
+      "model": "xgboost",
+      "sector_ticker": null
+    },
+    {
+      "calibration_window": 120,
+      "context_family": "none",
+      "horizon_days": 5,
+      "model": "xgboost",
+      "sector_ticker": null
+    },
+    {
+      "calibration_window": 120,
+      "context_family": "none",
+      "horizon_days": 10,
+      "model": "xgboost",
+      "sector_ticker": null
+    },
+    {
+      "calibration_window": 120,
+      "context_family": "none",
+      "horizon_days": 20,
+      "model": "xgboost",
+      "sector_ticker": null
+    }
+  ],
+  "contract_id": "e2cf1c1e9b1779f5dd36ac5f",
+  "current_price": 761.6900024414062,
+  "data_quality": {
+    "cache_age_days": null,
+    "cache_used": false,
+    "feature_store_hash": "3a907701494dde39fe31781a7b6812360fd81c389ef7f181741e87c2186d8976",
+    "feature_store_rows": 1255,
+    "provider": "yfinance",
+    "provider_failover_used": false,
+    "raw_provider": "yfinance"
+  },
+  "disclaimer": "Research and educational forecasting output only; no execution or investment instruction.",
+  "errors": [],
+  "forecasts": [
+    {
+      "calibration_samples": 120,
+      "calibration_status": "CALIBRATED",
+      "context_family": "none",
+      "context_provenance": {
+        "available": true,
+        "coverage_pct": null,
+        "feature_count": 0,
+        "sources_used": []
+      },
+      "diagnostics": {
+        "avg_width_bps_80": 219.37752267492615,
+        "avg_width_bps_90": 298.34577562559696,
+        "brier_score": 0.26832240696000104,
+        "brier_skill_vs_50_pct": -7.328962784000415,
+        "coverage_80_pct": 82.5,
+        "coverage_90_pct": 91.25,
+        "expected_calibration_error": 0.1331881042781503,
+        "oos_records": 120,
+        "probability_eval_records": 80
+      },
+      "expected_log_return": 0.0008881883695721626,
+      "expected_return_pct": 0.08885829256668476,
+      "feature_schema_version": "3.6-price-volume-v1",
+      "horizon_days": 1,
+      "model": "xgboost",
+      "price_range_80": [
+        754.5001599272165,
+        770.3155148816857
+      ],
+      "price_range_90": [
+        751.6246441869552,
+        773.2625369160761
+      ],
+      "probability_up_pct": 54.24196056551548,
+      "projected_price": 762.3668271722269,
+      "return_range_80_pct": [
+        -0.9439328980483608,
+        1.1324177043984474
+      ],
+      "return_range_90_pct": [
+        -1.3214507505926454,
+        1.5193234042165438
+      ],
+      "sector_ticker": null,
+      "target_date": "2026-09-21T00:00:00"
+    },
+    {
+      "calibration_samples": 120,
+      "calibration_status": "CALIBRATED",
+      "context_family": "none",
+      "context_provenance": {
+        "available": true,
+        "coverage_pct": null,
+        "feature_count": 0,
+        "sources_used": []
+      },
+      "diagnostics": {
+        "avg_width_bps_80": 596.9093559211913,
+        "avg_width_bps_90": 827.586186592124,
+        "brier_score": 0.31170027775938414,
+        "brier_skill_vs_50_pct": -24.680111103753653,
+        "coverage_80_pct": 91.25,
+        "coverage_90_pct": 96.25,
+        "expected_calibration_error": 0.2685280758569315,
+        "oos_records": 120,
+        "probability_eval_records": 80
+      },
+      "expected_log_return": -0.0003928090154659003,
+      "expected_return_pct": -0.03927318761052234,
+      "feature_schema_version": "3.6-price-volume-v1",
+      "horizon_days": 5,
+      "model": "xgboost",
+      "price_range_80": [
+        743.1285717587988,
+        780.101946723708
+      ],
+      "price_range_90": [
+        733.0039380349076,
+        790.8771227739843
+      ],
+      "probability_up_pct": 59.9534629036456,
+      "projected_price": 761.3908624977369,
+      "return_range_80_pct": [
+        -2.436874663329369,
+        2.417249041379943
+      ],
+      "return_range_90_pct": [
+        -3.766107512840222,
+        3.831889645265929
+      ],
+      "sector_ticker": null,
+      "target_date": "2026-09-25T00:00:00"
+    },
+    {
+      "calibration_samples": 120,
+      "calibration_status": "CALIBRATED",
+      "context_family": "none",
+      "context_provenance": {
+        "available": true,
+        "coverage_pct": null,
+        "feature_count": 0,
+        "sources_used": []
+      },
+      "diagnostics": {
+        "avg_width_bps_80": 919.3550111397686,
+        "avg_width_bps_90": 1265.5768440723184,
+        "brier_score": 0.3553333501763413,
+        "brier_skill_vs_50_pct": -42.133340070536526,
+        "coverage_80_pct": 100.0,
+        "coverage_90_pct": 100.0,
+        "expected_calibration_error": 0.31600310853768887,
+        "oos_records": 120,
+        "probability_eval_records": 80
+      },
+      "expected_log_return": 0.0048703281208872795,
+      "expected_return_pct": 0.4882207446464504,
+      "feature_schema_version": "3.6-price-volume-v1",
+      "horizon_days": 10,
+      "model": "xgboost",
+      "price_range_80": [
+        736.7166261960974,
+        795.2182762348261
+      ],
+      "price_range_90": [
+        729.8801923432932,
+        802.6667002379033
+      ],
+      "probability_up_pct": 61.30098398987284,
+      "projected_price": 765.4087310432233,
+      "return_range_80_pct": [
+        -3.2786797995592587,
+        4.401826686178545
+      ],
+      "return_range_90_pct": [
+        -4.176214732523031,
+        5.3797079737369025
+      ],
+      "sector_ticker": null,
+      "target_date": "2026-10-02T00:00:00"
+    },
+    {
+      "calibration_samples": 120,
+      "calibration_status": "CALIBRATED",
+      "context_family": "none",
+      "context_provenance": {
+        "available": true,
+        "coverage_pct": null,
+        "feature_count": 0,
+        "sources_used": []
+      },
+      "diagnostics": {
+        "avg_width_bps_80": 1608.7486666449054,
+        "avg_width_bps_90": 1986.1600557650672,
+        "brier_score": 0.2585524920604422,
+        "brier_skill_vs_50_pct": -3.4209968241768696,
+        "coverage_80_pct": 100.0,
+        "coverage_90_pct": 100.0,
+        "expected_calibration_error": 0.12947297416711698,
+        "oos_records": 120,
+        "probability_eval_records": 80
+      },
+      "expected_log_return": 0.004517783410847187,
+      "expected_return_pct": 0.45280039799637795,
+      "feature_schema_version": "3.6-price-volume-v1",
+      "horizon_days": 20,
+      "model": "xgboost",
+      "price_range_80": [
+        723.0220576239099,
+        809.7091754955766
+      ],
+      "price_range_90": [
+        706.4211261774919,
+        828.7373812156875
+      ],
+      "probability_up_pct": 70.0227427310614,
+      "projected_price": 765.1389378039596,
+      "return_range_80_pct": [
+        -5.076598707289836,
+        6.304293465879418
+      ],
+      "return_range_90_pct": [
+        -7.256085295430403,
+        8.802449626406773
+      ],
+      "sector_ticker": null,
+      "target_date": "2026-10-16T00:00:00"
+    }
+  ],
+  "generated_at": "2026-09-20T00:57:32.033223+00:00",
+  "provenance": {
+    "authority_schema": "4.0-authority-v1",
+    "contract_schema": "4.0-forecast-contract-v1",
+    "feature_store_schema": "3.6-price-volume-v1",
+    "uncertainty_protocol": "3.9-calibration-uncertainty-v1"
+  },
+  "schema_version": "4.0-forecast-contract-v1",
+  "scope": "FORECAST_ONLY",
+  "status": "READY",
+  "ticker": "SPY"
+}

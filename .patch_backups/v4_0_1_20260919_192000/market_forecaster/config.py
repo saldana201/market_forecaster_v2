@@ -1,0 +1,218 @@
+"""
+Market Forecaster — Configuration & Constants
+OneEight AI Systems
+
+Central configuration for plans, presets, feature flags, and app constants.
+Importable by both Streamlit UI and FastAPI without side effects.
+"""
+
+import os
+from dataclasses import dataclass, field
+from typing import Optional
+
+__version__ = "4.0.0"
+APP_NAME = "Market Forecaster"
+BRAND = "OneEight AI Systems"
+
+# -------------------------------------------------------------------
+# Guardrails
+# -------------------------------------------------------------------
+HORIZON_MIN = 7
+HORIZON_MAX = 180
+HOLDOUT_MIN = 5
+HOLDOUT_MAX = 60
+
+VALID_INTERVALS = ("1d", "1wk", "1mo")
+VALID_PERIODS = ("1mo", "3mo", "6mo", "1y", "2y", "5y", "10y")
+VALID_GROWTH = ("linear", "logistic")
+VALID_SEASONALITY = ("multiplicative", "additive")
+
+PERIOD_DAYS = {
+    "1mo": 30, "3mo": 90, "6mo": 180, "1y": 365,
+    "2y": 730, "5y": 1825, "10y": 3650,
+}
+
+# -------------------------------------------------------------------
+# Technical indicator columns used as regressors
+# -------------------------------------------------------------------
+TECH_FEATURE_COLUMNS = [
+    "ret_1d", "ret_5d", "volatility_20",
+    "SMA_20", "SMA_50", "SMA_200",
+    "RSI_14", "MACD", "MACD_signal", "MACD_hist",
+    "vol_zscore_20",
+]
+
+# -------------------------------------------------------------------
+# Chart pattern columns
+# -------------------------------------------------------------------
+PATTERN_FEATURE_COLUMNS = [
+    # Bullish continuation
+    "ascending_triangle", "bullish_flag", "bullish_wedge", "bullish_sym_triangle",
+    # Bearish continuation
+    "descending_triangle", "bearish_flag", "bearish_wedge", "bearish_sym_triangle",
+    # Bullish reversal
+    "double_bottom", "triple_bottom", "inverse_head_shoulders", "falling_wedge_rev",
+    # Bearish reversal
+    "double_top", "triple_top", "head_shoulders", "rising_wedge_rev",
+]
+
+BULLISH_PATTERNS = [
+    "ascending_triangle", "bullish_flag", "bullish_wedge", "bullish_sym_triangle",
+    "double_bottom", "triple_bottom", "inverse_head_shoulders", "falling_wedge_rev",
+]
+
+BEARISH_PATTERNS = [
+    "descending_triangle", "bearish_flag", "bearish_wedge", "bearish_sym_triangle",
+    "double_top", "triple_top", "head_shoulders", "rising_wedge_rev",
+]
+
+
+# -------------------------------------------------------------------
+# Plan / subscription configuration
+# -------------------------------------------------------------------
+@dataclass
+class PlanFeatures:
+    max_tickers: int = 2
+    allowed_periods: list = field(default_factory=lambda: list(VALID_PERIODS))
+    allow_options: bool = True
+    allow_ensemble: bool = True
+    allow_sentiment: bool = True
+    allow_seasonal: bool = True
+    allow_excel: bool = True
+    allow_csv: bool = True
+    allow_autotune: bool = True
+    allow_api: bool = False
+
+
+PLANS = {
+    "trial": PlanFeatures(max_tickers=2),
+    "starter": PlanFeatures(
+        max_tickers=3,
+        allow_options=False, allow_ensemble=False,
+        allow_sentiment=False, allow_seasonal=False,
+        allow_excel=False,
+    ),
+    "pro": PlanFeatures(max_tickers=10, allow_api=True),
+}
+
+
+def get_plan(plan_key: str = "trial") -> PlanFeatures:
+    return PLANS.get(plan_key.lower().strip(), PLANS["trial"])
+
+
+# -------------------------------------------------------------------
+# Forecast request dataclass (shared between UI and API)
+# -------------------------------------------------------------------
+@dataclass
+class ForecastRequest:
+    """Validated forecast configuration — the single source of truth for a run."""
+    ticker: str = "SPY"
+    period: str = "1y"
+    interval: str = "1d"
+    horizon: int = 30
+    holdout_days: int = 15
+    growth_mode: str = "linear"
+    seasonality_mode: str = "multiplicative"
+    cps: float = 0.10
+    sps: float = 8.0
+    normalize_logistic: bool = False
+    use_options: bool = False
+    use_ensemble: bool = False
+    use_sentiment: bool = False
+    use_seasonal: bool = False
+    ensemble_weights: Optional[dict] = None
+
+    def __post_init__(self):
+        self.ticker = self.ticker.upper().strip()
+        self.period = self.period if self.period in VALID_PERIODS else "1y"
+        self.interval = self.interval if self.interval in VALID_INTERVALS else "1d"
+        self.horizon = max(HORIZON_MIN, min(HORIZON_MAX, self.horizon))
+        self.holdout_days = max(HOLDOUT_MIN, min(HOLDOUT_MAX, self.holdout_days))
+        self.holdout_days = min(self.holdout_days, self.horizon)
+        self.growth_mode = self.growth_mode if self.growth_mode in VALID_GROWTH else "linear"
+        self.seasonality_mode = self.seasonality_mode if self.seasonality_mode in VALID_SEASONALITY else "multiplicative"
+        self.cps = max(0.01, min(0.50, self.cps))
+        self.sps = max(0.1, min(20.0, self.sps))
+        if self.growth_mode != "logistic":
+            self.normalize_logistic = False
+        if self.ensemble_weights is None:
+            self.ensemble_weights = {"arima": 0.25, "rf": 0.35, "lstm": 0.40}
+
+    def to_prophet_kwargs(self) -> dict:
+        return {
+            "growth": self.growth_mode,
+            "changepoint_prior_scale": self.cps,
+            "seasonality_prior_scale": self.sps,
+            "seasonality_mode": self.seasonality_mode,
+        }
+
+
+# -------------------------------------------------------------------
+# Presets
+# -------------------------------------------------------------------
+CORE_PRESETS = {
+    "Swing Trader (30D)": ForecastRequest(
+        period="1y", horizon=30, holdout_days=15, cps=0.12, sps=8.0,
+        tickers_text_hint="SPY, AAPL",
+    ) if False else {  # Using dicts for JSON compatibility
+        "period": "1y", "interval": "1d", "horizon": 30, "holdout_days": 15,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.12, "sps": 8.0,
+    },
+    "Breakout Watch (60D)": {
+        "period": "1y", "interval": "1d", "horizon": 60, "holdout_days": 30,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.10, "sps": 6.0,
+    },
+    "Mid-Term Trend (180D)": {
+        "period": "5y", "interval": "1d", "horizon": 180, "holdout_days": 60,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.06, "sps": 8.0,
+    },
+    "Momentum / High-Vol (90D)": {
+        "period": "2y", "interval": "1d", "horizon": 90, "holdout_days": 30,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.14, "sps": 6.0,
+    },
+    "Crypto Swing (30D)": {
+        "period": "1y", "interval": "1d", "horizon": 30, "holdout_days": 15,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.12, "sps": 8.0,
+    },
+}
+
+PRO_PRESETS = {
+    "Options Pulse (10D)": {
+        "period": "3mo", "interval": "1d", "horizon": 10, "holdout_days": 5,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.20, "sps": 10.0, "use_options": True,
+    },
+    "Full Stack Lab (90D)": {
+        "period": "5y", "interval": "1d", "horizon": 90, "holdout_days": 30,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.10, "sps": 8.0,
+        "use_options": True, "use_ensemble": True,
+        "use_sentiment": True, "use_seasonal": True,
+    },
+    "Multi-Model Consensus (60D)": {
+        "period": "2y", "interval": "1d", "horizon": 60, "holdout_days": 30,
+        "growth_mode": "linear", "seasonality_mode": "multiplicative",
+        "cps": 0.08, "sps": 8.0, "use_ensemble": True,
+    },
+}
+
+
+# -------------------------------------------------------------------
+# Disclaimer text
+# -------------------------------------------------------------------
+DISCLAIMER = (
+    "⚠️ **Disclaimer:** This tool is for educational and research purposes only. "
+    "It does not constitute financial advice. Past performance does not guarantee "
+    "future results. Always do your own research before making trading decisions."
+)
+
+SIMULATED_DATA_WARNING = (
+    "⚠️ **Simulated Data:** Sentiment scores shown here are generated from a "
+    "statistical model for demonstration purposes. They do not reflect real news "
+    "or social media analysis. Do not use for trading decisions."
+)
