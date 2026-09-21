@@ -22,6 +22,8 @@ def _normalize_rows(frame: pd.DataFrame) -> list[dict]:
             raise ValueError(f"{ticker} is not available in the Demo portfolio.")
         if ticker in seen:
             raise ValueError(f"Duplicate Demo portfolio ticker: {ticker}")
+        if pd.isna(quantity) or pd.isna(cost_basis):
+            raise ValueError(f"Quantity and cost basis are required for {ticker}.")
         quantity = float(quantity)
         cost_basis = float(cost_basis)
         if quantity == 0:
