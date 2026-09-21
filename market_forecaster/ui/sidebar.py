@@ -15,6 +15,8 @@ from market_forecaster.config import (
     BRAND,
 )
 from market_forecaster.ui.components import get_mode, is_trader, is_analyst, MODES
+from market_forecaster.core.demo_universe import demo_tickers
+from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 
 
 def render_sidebar() -> ForecastRequest:
@@ -24,14 +26,31 @@ def render_sidebar() -> ForecastRequest:
         st.caption(f"Market Forecaster v{__version__}")
 
         st.markdown("### Forecast")
-        ticker = st.text_input(
-            "Ticker or crypto symbol",
-            value=st.session_state.get("ticker", "SPY"),
-            placeholder="AAPL, SPY, ETH-USD",
-            help="The main Forecast page uses the active 4.0 Forecast Authority automatically.",
-        ).strip().upper()
-        st.session_state["ticker"] = ticker
-        st.caption("Start on the Forecast tab. Research and technical controls are optional.")
+        ensure_demo_session(st.session_state)
+        identity = resolve_identity(st.session_state)
+        if identity.plan == "demo" and not identity.authenticated:
+            symbols = list(demo_tickers())
+            existing = str(st.session_state.get("ticker", "SPY")).upper().strip()
+            default_index = symbols.index(existing) if existing in symbols else symbols.index("SPY")
+            ticker = st.selectbox(
+                "Demo symbol",
+                symbols,
+                index=default_index,
+                help="Anonymous Demo access is limited to the curated symbol universe and reads cached Forecast Contracts only.",
+            )
+            st.session_state["ticker"] = ticker
+            st.caption("Demo mode · session-only watchlist and portfolio")
+            with st.expander("Analyze my own ticker"):
+                st.info("Custom ticker analysis is available with an account plan in a later 4.1 phase.")
+        else:
+            ticker = st.text_input(
+                "Ticker or crypto symbol",
+                value=st.session_state.get("ticker", "SPY"),
+                placeholder="AAPL, SPY, ETH-USD",
+                help="The main Forecast page uses the active Forecast Authority automatically.",
+            ).strip().upper()
+            st.session_state["ticker"] = ticker
+            st.caption("Start on the Forecast tab. Research and technical controls are optional.")
 
         # Defaults kept for legacy/advanced tooling.
         period = st.session_state.get("p_period", "1y")
