@@ -49,6 +49,9 @@ from market_forecaster.ui.forecast_dashboard import render_forecast_dashboard
 from market_forecaster.ui.research_workspace import render_research_workspace
 from market_forecaster.ui.system_health_workspace import render_system_health_workspace
 from market_forecaster.ui.advanced_tools_panel import render_advanced_tools_panel
+from market_forecaster.ui.demo_landing import render_demo_landing
+from market_forecaster.ui.demo_watchlist import render_demo_watchlist
+from market_forecaster.ui.demo_portfolio import render_demo_portfolio
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -63,6 +66,8 @@ from market_forecaster.core.seasonal import SeasonalAnalyzer
 from market_forecaster.core.signals import compute_basic_signal, compute_integrated_signal
 from market_forecaster.core.options_flow_v2 import fetch_options_flow_v2, persist_options_snapshot
 from market_forecaster.core.operations import record_operation_event
+from market_forecaster.core.entitlements import can_view_research_lab
+from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 
 # AutoTune
 from market_forecaster.autotune.tuner import run_autotune
@@ -75,7 +80,10 @@ st.set_page_config(page_title=f"{BRAND} — Market Forecaster", layout="wide")
 # ===================================================================
 # Sidebar → returns a validated ForecastRequest
 # ===================================================================
+ensure_demo_session(st.session_state)
 req = render_sidebar()
+identity = resolve_identity(st.session_state)
+is_demo = identity.plan == "demo" and not identity.authenticated
 
 # ===================================================================
 # Header
@@ -110,21 +118,60 @@ tab_patterns = tab_advanced if is_analyst() else None
 tab_backtest = None
 
 with tab_forecast:
+    if is_demo:
+        selected = render_demo_landing(req.ticker)
+        if selected != req.ticker:
+            req.ticker = selected
     render_forecast_dashboard(req.ticker)
+    if is_demo:
+        st.markdown("---")
+        left, right = st.columns(2)
+        with left:
+            render_demo_watchlist(req.ticker)
+        with right:
+            render_demo_portfolio()
 
 with tab_research:
-    render_research_workspace(req.ticker)
+    if can_view_research_lab(identity):
+        render_research_workspace(req.ticker)
+    else:
+        st.header("🧪 Research Lab")
+        st.info("Research Lab is a Pro capability. Demo forecasts remain full-quality; the upgrade boundary is advanced research tooling.")
 
 with tab_health:
-    render_system_health_workspace(req)
+    if is_demo:
+        st.header("🩺 System Health")
+        st.info("System diagnostics are not exposed in anonymous Demo mode.")
+    else:
+        render_system_health_workspace(req)
 
 with tab_advanced:
-    st.header("Advanced / Legacy Tools")
-    st.caption(
-        "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
-        "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
-    )
-    render_advanced_tools_panel(req.ticker)
+    if is_demo:
+        st.header("⚙️ Advanced / Legacy Tools")
+        st.info("Advanced model execution is disabled in anonymous Demo mode. Demo traffic reads shared cached Forecast Contracts only.")
+    else:
+        st.header("Advanced / Legacy Tools")
+        st.caption(
+            "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
+            "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
+        )
+        render_advanced_tools_panel(req.ticker)
+
+if is_demo:
+    with tab_help:
+        st.header("📚 Demo Quick Start")
+        st.markdown("""
+1. Pick one of the curated Demo symbols.
+2. View its latest shared 1D / 5D / 10D / 20D Forecast Contract.
+3. Build a temporary Demo Watchlist and Demo Portfolio.
+4. Custom tickers, persistence, Research Lab, and API access are upgrade boundaries for later 4.1 phases.
+
+**Demo state is session-only.** A server recycle, timeout, or lost session can clear it.
+        """)
+        show_disclaimer()
+    st.markdown("---")
+    st.caption(f"{BRAND} · Market Forecaster v{__version__} · Anonymous Demo")
+    st.stop()
 
 
 # ===================================================================
