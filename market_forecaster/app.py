@@ -18,7 +18,7 @@ import streamlit as st
 from datetime import timedelta
 
 from market_forecaster.config import (
-    __version__, BRAND, DISCLAIMER, ForecastRequest,
+    __version__, BRAND, DISCLAIMER, DEMO_MODE_ENABLED, ForecastRequest,
 )
 from market_forecaster.ui.sidebar import render_sidebar
 from market_forecaster.ui.components import (
@@ -83,7 +83,7 @@ st.set_page_config(page_title=f"{BRAND} — Market Forecaster", layout="wide")
 ensure_demo_session(st.session_state)
 req = render_sidebar()
 identity = resolve_identity(st.session_state)
-is_demo = identity.plan == "demo" and not identity.authenticated
+is_demo = DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated
 
 # ===================================================================
 # Header
