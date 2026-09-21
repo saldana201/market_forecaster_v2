@@ -13,6 +13,7 @@ from market_forecaster.config import (
     ForecastRequest,
     __version__,
     BRAND,
+    DEMO_MODE_ENABLED,
 )
 from market_forecaster.ui.components import get_mode, is_trader, is_analyst, MODES
 from market_forecaster.core.demo_universe import demo_tickers
@@ -28,7 +29,7 @@ def render_sidebar() -> ForecastRequest:
         st.markdown("### Forecast")
         ensure_demo_session(st.session_state)
         identity = resolve_identity(st.session_state)
-        if identity.plan == "demo" and not identity.authenticated:
+        if DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated:
             symbols = list(demo_tickers())
             existing = str(st.session_state.get("ticker", "SPY")).upper().strip()
             default_index = symbols.index(existing) if existing in symbols else symbols.index("SPY")
