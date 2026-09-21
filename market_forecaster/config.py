@@ -10,9 +10,25 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-__version__ = "4.0.1"
+__version__ = "4.1.0"
 APP_NAME = "Market Forecaster"
 BRAND = "OneEight AI Systems"
+
+# -------------------------------------------------------------------
+# 4.1 platform feature flags
+# -------------------------------------------------------------------
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+DEMO_MODE_ENABLED = _env_flag("DEMO_MODE_ENABLED", True)
+MULTI_USER_ENABLED = _env_flag("MULTI_USER_ENABLED", False)
+DATABASE_PERSISTENCE_ENABLED = _env_flag("DATABASE_PERSISTENCE_ENABLED", False)
+SUBSCRIPTIONS_ENABLED = _env_flag("SUBSCRIPTIONS_ENABLED", False)
+PRO_RESEARCH_ENABLED = _env_flag("PRO_RESEARCH_ENABLED", False)
+PUBLIC_DEMO_API_ENABLED = _env_flag("PUBLIC_DEMO_API_ENABLED", True)
 
 # -------------------------------------------------------------------
 # Guardrails

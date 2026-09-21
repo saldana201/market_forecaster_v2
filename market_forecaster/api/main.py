@@ -34,9 +34,10 @@ from market_forecaster.api.routes import research as research_routes
 from market_forecaster.api.routes import feature_ablation as feature_ablation_routes
 from market_forecaster.api.routes import uncertainty as uncertainty_routes
 from market_forecaster.api.routes import forecast_intelligence as forecast_intelligence_routes
+from market_forecaster.api.routes import public_demo as public_demo_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
-from market_forecaster.config import DISCLAIMER, __version__
+from market_forecaster.config import DISCLAIMER, PUBLIC_DEMO_API_ENABLED, __version__
 from market_forecaster.core.ensemble import ARIMA_AVAILABLE, LSTM_AVAILABLE
 from market_forecaster.core.xgb_multihorizon import XGBOOST_AVAILABLE
 
@@ -65,6 +66,8 @@ app.add_middleware(
 app.add_middleware(RequestContextMiddleware)
 
 protected = [Depends(require_api_key)]
+if PUBLIC_DEMO_API_ENABLED:
+    app.include_router(public_demo_routes.router, prefix="/api/v1", tags=["Public Demo"])
 app.include_router(forecast_routes.router, prefix="/api/v1", tags=["Forecast"], dependencies=protected)
 app.include_router(signal_routes.router, prefix="/api/v1", tags=["Signals"], dependencies=protected)
 app.include_router(pattern_routes.router, prefix="/api/v1", tags=["Patterns"], dependencies=protected)

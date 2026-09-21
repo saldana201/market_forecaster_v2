@@ -1,4 +1,4 @@
-"""Plain-language Forecast Dashboard for Market Forecaster 4.0.1."""
+"""Plain-language Forecast Dashboard for Market Forecaster 4.1.0."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -7,9 +7,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from market_forecaster.config import DEMO_MODE_ENABLED
 from market_forecaster.core.forecast_authority import load_authority_config
 from market_forecaster.core.forecast_contract import build_forecast_contract
 from market_forecaster.core.research_snapshots import load_latest_contract
+from market_forecaster.core.session_identity import resolve_identity
+from market_forecaster.services.forecast_access import ForecastAccessError, load_demo_forecast
 
 
 def _number(value):
@@ -212,9 +215,18 @@ def render_forecast_dashboard(current_ticker: str) -> None:
     st.subheader(f"Forecast Outlook — {ticker}")
     st.caption("A plain-language view of the active forecasting setup. Technical research details are in Research Lab.")
 
-    saved = load_latest_contract(ticker)
-    session_contract = st.session_state.get("simple_forecast_contract")
-    contract = session_contract if session_contract and session_contract.get("ticker") == ticker else saved
+    identity = resolve_identity(st.session_state)
+    is_demo = DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated
+
+    if is_demo:
+        try:
+            contract = load_demo_forecast(ticker).contract
+        except ForecastAccessError:
+            contract = None
+    else:
+        saved = load_latest_contract(ticker)
+        session_contract = st.session_state.get("simple_forecast_contract")
+        contract = session_contract if session_contract and session_contract.get("ticker") == ticker else saved
 
     top_left, top_right = st.columns([4, 1])
     with top_left:
@@ -223,13 +235,23 @@ def render_forecast_dashboard(current_ticker: str) -> None:
             if contract else "No saved forecast is available yet."
         )
     with top_right:
-        refresh_clicked = st.button("Refresh Forecast" if contract else "Generate Forecast", type="primary", use_container_width=True, key="simple_generate_forecast")
+        refresh_clicked = False if is_demo else st.button(
+            "Refresh Forecast" if contract else "Generate Forecast",
+            type="primary",
+            use_container_width=True,
+            key="simple_generate_forecast",
+        )
+        if is_demo:
+            st.caption("Shared cached Demo forecast")
 
-    with st.expander("Forecast settings", expanded=False):
-        history_label = st.selectbox("History used", ["Standard — 5 years", "Deep — 10 years"], index=0, key="simple_contract_history", help="More history is slower but provides more calibration evidence.")
-        validation_label = st.selectbox("Validation depth", ["Standard", "Deep"], index=0, key="simple_contract_validation", help="Deep validation uses more historical test periods and takes longer.")
-    period = "10y" if st.session_state.get("simple_contract_history", "").startswith("Deep") else "5y"
-    folds = 6 if st.session_state.get("simple_contract_validation") == "Deep" else 4
+    period = "5y"
+    folds = 4
+    if not is_demo:
+        with st.expander("Forecast settings", expanded=False):
+            st.selectbox("History used", ["Standard — 5 years", "Deep — 10 years"], index=0, key="simple_contract_history", help="More history is slower but provides more calibration evidence.")
+            st.selectbox("Validation depth", ["Standard", "Deep"], index=0, key="simple_contract_validation", help="Deep validation uses more historical test periods and takes longer.")
+        period = "10y" if st.session_state.get("simple_contract_history", "").startswith("Deep") else "5y"
+        folds = 6 if st.session_state.get("simple_contract_validation") == "Deep" else 4
 
     if refresh_clicked:
         with st.spinner("Updating 1-day, 5-day, 10-day and 20-day forecasts and checking uncertainty..."):
@@ -241,7 +263,13 @@ def render_forecast_dashboard(current_ticker: str) -> None:
                 return
 
     if not contract:
-        st.info("Generate a forecast to see projected prices, expected moves, direction probability, and uncertainty ranges.")
+        if is_demo:
+            st.warning(
+                "This Demo symbol does not have a cached Forecast Contract yet. "
+                "Run the scheduled Demo refresh job; anonymous traffic will not trigger training."
+            )
+        else:
+            st.info("Generate a forecast to see projected prices, expected moves, direction probability, and uncertainty ranges.")
         return
 
     if contract.get("status") == "PARTIAL":
