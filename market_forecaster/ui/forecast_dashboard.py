@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from market_forecaster.config import DEMO_MODE_ENABLED
 from market_forecaster.core.forecast_authority import load_authority_config
 from market_forecaster.core.forecast_contract import build_forecast_contract
 from market_forecaster.core.research_snapshots import load_latest_contract
@@ -215,7 +216,7 @@ def render_forecast_dashboard(current_ticker: str) -> None:
     st.caption("A plain-language view of the active forecasting setup. Technical research details are in Research Lab.")
 
     identity = resolve_identity(st.session_state)
-    is_demo = identity.plan == "demo" and not identity.authenticated
+    is_demo = DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated
 
     if is_demo:
         try:
