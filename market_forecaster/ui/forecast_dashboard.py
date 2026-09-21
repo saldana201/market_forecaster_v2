@@ -11,7 +11,7 @@ from market_forecaster.core.forecast_authority import load_authority_config
 from market_forecaster.core.forecast_contract import build_forecast_contract
 from market_forecaster.core.research_snapshots import load_latest_contract
 from market_forecaster.core.session_identity import resolve_identity
-from market_forecaster.services.forecast_access import CachedForecastUnavailable, load_demo_forecast
+from market_forecaster.services.forecast_access import ForecastAccessError, load_demo_forecast
 
 
 def _number(value):
@@ -220,7 +220,7 @@ def render_forecast_dashboard(current_ticker: str) -> None:
     if is_demo:
         try:
             contract = load_demo_forecast(ticker).contract
-        except CachedForecastUnavailable:
+        except ForecastAccessError:
             contract = None
     else:
         saved = load_latest_contract(ticker)
