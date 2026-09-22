@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import MutableMapping
 from uuid import NAMESPACE_URL, uuid5
 
-from market_forecaster.auth.provider import AuthProvider, AuthResult, AuthUser, InvalidToken
+from market_forecaster.auth.provider import AuthProvider, AuthProviderError, AuthResult, AuthUser, InvalidToken
 from market_forecaster.core.session_identity import (
     DEMO_SESSION_KEY,
     IDENTITY_SESSION_KEY,
@@ -94,7 +94,7 @@ def sync_authenticated_identity(
 
     try:
         user = provider.verify_token(str(auth["access_token"]))
-    except InvalidToken:
+    except (InvalidToken, AuthProviderError):
         clear_authenticated_session(state)
         raise
 
