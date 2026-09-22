@@ -66,6 +66,8 @@ def _render_market_card(row, status: dict, current: str) -> bool:
     anchor = _anchor_forecast(status.get("forecasts") or [])
     expected = anchor.get("expected_return_pct") if anchor else None
     probability = anchor.get("probability_up_pct") if anchor else None
+    horizon = int(anchor.get("horizon_days", 0) or 0) if anchor else 0
+    outlook_label = f"{horizon}D outlook" if horizon else "Outlook"
     price = status.get("current_price")
 
     status_class = "mf-status-ready" if available else "mf-status-wait"
@@ -83,7 +85,7 @@ def _render_market_card(row, status: dict, current: str) -> bool:
   <span class="mf-status {status_class}">{html.escape(status_text)}</span>
   <div class="mf-card-meta">
       <div><span>Current</span><strong>{html.escape(_fmt_money(price))}</strong></div>
-      <div><span>10D outlook</span><strong>{html.escape(_fmt_pct(expected, signed=True))}</strong></div>
+      <div><span>{html.escape(outlook_label)}</span><strong>{html.escape(_fmt_pct(expected, signed=True))}</strong></div>
       <div><span>Chance up</span><strong>{html.escape(_fmt_pct(probability))}</strong></div>
   </div>
 </div>
