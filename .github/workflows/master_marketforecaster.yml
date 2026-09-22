@@ -76,6 +76,20 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5B9FC7F1D0CA4531A6678659F1C575E9 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F60C40A3C2E74BF1BF6E1EE01CCA149C }}
 
+      - name: Configure Azure App Service Python runtime
+        shell: bash
+        run: |
+          RESOURCE_GROUP="$(az webapp list --query "[?name=='marketforecaster'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "Could not resolve Azure resource group for marketforecaster."
+            exit 1
+          fi
+          echo "Configuring marketforecaster in resource group: $RESOURCE_GROUP"
+          az webapp config set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --linux-fx-version "PYTHON|3.12"
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
