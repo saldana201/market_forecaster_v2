@@ -22,12 +22,12 @@ from market_forecaster.auth.provider import (
 class SupabaseAuthProvider:
     name = "supabase"
 
-    def __init__(self, url: str, anon_key: str, timeout_seconds: float = 10.0):
+    def __init__(self, url: str, publishable_key: str, timeout_seconds: float = 10.0):
         self.url = str(url or "").strip().rstrip("/")
-        self.anon_key = str(anon_key or "").strip()
+        self.publishable_key = str(publishable_key or "").strip()
         self.timeout_seconds = float(timeout_seconds)
-        if not self.url or not self.anon_key:
-            raise AuthConfigurationError("Supabase URL and anonymous key are required.")
+        if not self.url or not self.publishable_key:
+            raise AuthConfigurationError("Supabase URL and publishable key are required.")
 
     def _request(
         self,
@@ -38,7 +38,7 @@ class SupabaseAuthProvider:
         access_token: str | None = None,
     ) -> dict:
         headers = {
-            "apikey": self.anon_key,
+            "apikey": self.publishable_key,
             "Content-Type": "application/json",
         }
         if access_token:
