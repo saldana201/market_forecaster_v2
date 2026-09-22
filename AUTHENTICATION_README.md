@@ -22,10 +22,12 @@ Set these as Azure App Service configuration values or local environment variabl
 
     MARKET_FORECASTER_AUTH_PROVIDER=supabase
     MARKET_FORECASTER_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-    MARKET_FORECASTER_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+    MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY=YOUR_SB_PUBLISHABLE_KEY
     MULTI_USER_ENABLED=true
 
-SUPABASE_URL and SUPABASE_ANON_KEY are accepted as fallback names.
+SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are accepted as fallback names.
+Legacy MARKET_FORECASTER_SUPABASE_ANON_KEY / SUPABASE_ANON_KEY values remain supported for compatibility,
+but new deployments should use a publishable key.
 
 Do not commit keys to the repository.
 
