@@ -1,4 +1,4 @@
-"""Normalized application identity for the anonymous 4.1.0 Demo foundation."""
+"""Normalized application identity for Demo and authenticated sessions."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -18,20 +18,28 @@ class AppIdentity:
     plan: str
     subscription_status: str
     is_admin: bool = False
+    auth_provider: str | None = None
+    auth_subject: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-def new_demo_identity() -> AppIdentity:
+def new_demo_identity_for_session(session_id: str) -> AppIdentity:
     return AppIdentity(
         user_id=None,
-        session_id=str(uuid4()),
+        session_id=str(session_id),
         authenticated=False,
         plan="demo",
         subscription_status="not_applicable",
         is_admin=False,
+        auth_provider=None,
+        auth_subject=None,
     )
+
+
+def new_demo_identity() -> AppIdentity:
+    return new_demo_identity_for_session(str(uuid4()))
 
 
 def ensure_demo_session(state: MutableMapping) -> dict:
@@ -55,13 +63,8 @@ def ensure_demo_session(state: MutableMapping) -> dict:
 
     identity = state.get(IDENTITY_SESSION_KEY)
     if not isinstance(identity, dict):
-        state[IDENTITY_SESSION_KEY] = AppIdentity(
-            user_id=None,
-            session_id=str(session["session_id"]),
-            authenticated=False,
-            plan="demo",
-            subscription_status="not_applicable",
-            is_admin=False,
+        state[IDENTITY_SESSION_KEY] = new_demo_identity_for_session(
+            str(session["session_id"])
         ).to_dict()
     return session
 
@@ -76,4 +79,6 @@ def resolve_identity(state: MutableMapping) -> AppIdentity:
         plan=str(raw.get("plan") or "demo").lower(),
         subscription_status=str(raw.get("subscription_status") or "not_applicable"),
         is_admin=bool(raw.get("is_admin", False)),
+        auth_provider=raw.get("auth_provider"),
+        auth_subject=raw.get("auth_subject"),
     )
