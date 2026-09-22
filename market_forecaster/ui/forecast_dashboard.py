@@ -212,11 +212,20 @@ def _generate_contract(ticker: str, period: str, folds: int) -> dict:
 
 def render_forecast_dashboard(current_ticker: str) -> None:
     ticker = str(current_ticker or "").upper().strip()
-    st.subheader(f"Forecast Outlook — {ticker}")
-    st.caption("A plain-language view of the active forecasting setup. Technical research details are in Research Lab.")
-
     identity = resolve_identity(st.session_state)
     is_demo = DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated
+
+    st.subheader(f"Forecast Outlook — {ticker}")
+    if is_demo:
+        st.caption(
+            "Full-quality shared Forecast Contract · 1D / 5D / 10D / 20D outlook · "
+            "cached for fast anonymous access."
+        )
+    else:
+        st.caption(
+            "A plain-language view of the active forecasting setup. "
+            "Technical research details are in Research Lab."
+        )
 
     if is_demo:
         try:
