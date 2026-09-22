@@ -21,9 +21,14 @@ def auth_configuration_status() -> tuple[bool, str]:
         return False, f"Unsupported auth provider: {provider}"
 
     url = os.getenv("MARKET_FORECASTER_SUPABASE_URL") or os.getenv("SUPABASE_URL")
-    key = os.getenv("MARKET_FORECASTER_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    key = (
+        os.getenv("MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY")
+        or os.getenv("SUPABASE_PUBLISHABLE_KEY")
+        or os.getenv("MARKET_FORECASTER_SUPABASE_ANON_KEY")
+        or os.getenv("SUPABASE_ANON_KEY")
+    )
     if not url or not key:
-        return False, "Supabase URL or anonymous key is not configured."
+        return False, "Supabase URL or publishable key is not configured."
     return True, "ready"
 
 
@@ -36,6 +41,12 @@ def get_auth_provider() -> AuthProvider:
     if provider == "supabase":
         return SupabaseAuthProvider(
             os.getenv("MARKET_FORECASTER_SUPABASE_URL") or os.getenv("SUPABASE_URL") or "",
-            os.getenv("MARKET_FORECASTER_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY") or "",
+            (
+                os.getenv("MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY")
+                or os.getenv("SUPABASE_PUBLISHABLE_KEY")
+                or os.getenv("MARKET_FORECASTER_SUPABASE_ANON_KEY")
+                or os.getenv("SUPABASE_ANON_KEY")
+                or ""
+            ),
         )
     raise AuthConfigurationError(f"Unsupported auth provider: {provider}")
