@@ -71,7 +71,7 @@ from market_forecaster.core.operations import record_operation_event
 from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 from market_forecaster.core.entitlements import can_view_research_lab
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
-from market_forecaster.auth.provider import InvalidToken
+from market_forecaster.auth.provider import AuthProviderError, InvalidToken
 from market_forecaster.auth.session import sync_authenticated_identity
 
 # AutoTune
@@ -93,6 +93,8 @@ if MULTI_USER_ENABLED:
             sync_authenticated_identity(st.session_state, get_auth_provider())
         except InvalidToken:
             st.session_state["auth_notice"] = "Your account session expired. Please sign in again."
+        except AuthProviderError:
+            st.session_state["auth_notice"] = "Account verification is temporarily unavailable. Please sign in again."
 
 req = render_sidebar()
 identity = resolve_identity(st.session_state)
