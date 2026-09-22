@@ -1,0 +1,62 @@
+"""Provider-neutral authentication contracts."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+
+class AuthProviderError(RuntimeError):
+    """Base managed-auth error."""
+
+
+class AuthConfigurationError(AuthProviderError):
+    """Raised when the configured provider is missing required settings."""
+
+
+class InvalidCredentials(AuthProviderError):
+    """Raised when sign-in credentials are rejected."""
+
+
+class InvalidToken(AuthProviderError):
+    """Raised when an access token is expired, malformed, or rejected."""
+
+
+@dataclass(frozen=True)
+class AuthUser:
+    subject: str
+    email: str | None = None
+    display_name: str | None = None
+    email_confirmed: bool = False
+
+
+@dataclass(frozen=True)
+class AuthTokens:
+    access_token: str
+    refresh_token: str | None = None
+    expires_in: int | None = None
+    token_type: str = "bearer"
+
+
+@dataclass(frozen=True)
+class AuthResult:
+    user: AuthUser
+    tokens: AuthTokens | None
+    requires_email_confirmation: bool = False
+
+
+class AuthProvider(Protocol):
+    """Minimal adapter implemented by any managed identity provider."""
+
+    name: str
+
+    def register(self, email: str, password: str, display_name: str | None = None) -> AuthResult:
+        ...
+
+    def login(self, email: str, password: str) -> AuthResult:
+        ...
+
+    def logout(self, access_token: str) -> None:
+        ...
+
+    def verify_token(self, access_token: str) -> AuthUser:
+        ...

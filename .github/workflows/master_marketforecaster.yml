@@ -22,7 +22,7 @@ jobs:
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       # 🛠️ Local Build Section (Optional)
       # The following section in your workflow is designed to catch build issues early on the client side, before deployment. This can be helpful for debugging and validation. However, if this step significantly increases deployment time and early detection is not critical for your workflow, you may remove this section to streamline the deployment process.
@@ -31,15 +31,25 @@ jobs:
           python -m venv antenv
           source antenv/bin/activate
           pip install -r requirements.txt
+          python -m streamlit --version
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
+      - name: Refresh Demo Forecast Contract cache
+        run: |
+          source antenv/bin/activate
+          python -m market_forecaster.scripts.refresh_demo_contracts --period 5y --folds 4
+          python -m market_forecaster.scripts.check_demo_cache --compact
+
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
+          include-hidden-files: true
           path: |
             .
             !antenv/
+            !.git/
+            !.patch_backups/
 
       # 🚫 Opting Out of Oryx Build
       # If you prefer to disable the Oryx build process during deployment, follow these steps:
@@ -67,10 +77,66 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5B9FC7F1D0CA4531A6678659F1C575E9 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F60C40A3C2E74BF1BF6E1EE01CCA149C }}
 
+      - name: Configure Azure App Service Python runtime
+        shell: bash
+        run: |
+          RESOURCE_GROUP="$(az webapp list --query "[?name=='marketforecaster'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "Could not resolve Azure resource group for marketforecaster."
+            exit 1
+          fi
+          echo "Configuring marketforecaster in resource group: $RESOURCE_GROUP"
+
+          # The deployment artifact intentionally excludes the GitHub Actions
+          # virtualenv. Force App Service/Oryx to install requirements.txt on
+          # the Azure host during deployment.
+          az webapp config appsettings set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+              ENABLE_ORYX_BUILD=true
+
+          # Market Forecaster is a Streamlit app, not a Flask/Django app.
+          # Use python -m so the package installed by Oryx is resolved from
+          # the deployment environment rather than relying on a global
+          # "streamlit" executable being present on PATH. Streamlit also
+          # requires WebSockets for its browser session channel.
+          az webapp config set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --linux-fx-version "PYTHON|3.12" \
+            --web-sockets-enabled true \
+            --startup-file "python -m streamlit run market_forecaster/app.py --server.address 0.0.0.0 --server.port 8000 --server.headless true"
+
+          APP_HOST="$(az webapp show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --query defaultHostName -o tsv)"
+          echo "APP_HOST=$APP_HOST" >> "$GITHUB_ENV"
+
+      - name: Wait for App Service configuration restart to settle
+        shell: bash
+        run: |
+          echo "Waiting for Azure SCM/app containers to settle after configuration changes..."
+          sleep 60
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'marketforecaster'
           slot-name: 'Production'
+
+      - name: Verify deployed Streamlit app
+        shell: bash
+        run: |
+          echo "Waiting for https://$APP_HOST to become healthy..."
+          curl --fail --show-error --silent \
+            --retry 18 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            --max-time 20 \
+            "https://$APP_HOST/" > /dev/null
+          echo "Market Forecaster is responding successfully."
           

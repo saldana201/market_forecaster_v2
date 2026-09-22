@@ -178,15 +178,33 @@ def build_forecast_contract(
     errors = []
     authority_used = []
 
-    for row in authority_rows(authority):
-        horizon = int(row["horizon"])
-        if not row.get("enabled", True):
-            continue
+    # Horizons that share the exact same governed model/context/calibration
+    # settings can be evaluated together. run_uncertainty_research already
+    # supports multi-horizon execution, so grouping avoids repeating the same
+    # feature/context setup and research protocol four times for the default
+    # Forecast Authority while preserving horizon-specific outputs.
+    enabled_rows = [
+        row for row in authority_rows(authority)
+        if row.get("enabled", True)
+    ]
+    grouped_rows: dict[tuple, list[dict]] = {}
+    group_order: list[tuple] = []
+    for row in enabled_rows:
+        key = (
+            str(row.get("model", "xgboost")).lower(),
+            str(row.get("context_family", "none")).lower(),
+            row.get("sector_ticker"),
+            row.get("calibration_window", 120),
+        )
+        if key not in grouped_rows:
+            grouped_rows[key] = []
+            group_order.append(key)
+        grouped_rows[key].append(row)
 
-        model = str(row.get("model", "xgboost")).lower()
-        context_family = str(row.get("context_family", "none")).lower()
-        sector_ticker = row.get("sector_ticker")
-        calibration_window = row.get("calibration_window", 120)
+    for key in group_order:
+        model, context_family, sector_ticker, calibration_window = key
+        rows = grouped_rows[key]
+        horizons = [int(row["horizon"]) for row in rows]
 
         feature_frame = base_frame
         context_info = None
@@ -201,13 +219,14 @@ def build_forecast_contract(
             )
             context_info = registry.get(context_family, {})
             if not context_info.get("available"):
-                errors.append({
-                    "horizon_days": horizon,
-                    "model": model,
-                    "context_family": context_family,
-                    "error": "Configured context family is unavailable or lacks sufficient coverage",
-                    "context_info": context_info,
-                })
+                for row in rows:
+                    errors.append({
+                        "horizon_days": int(row["horizon"]),
+                        "model": model,
+                        "context_family": context_family,
+                        "error": "Configured context family is unavailable or lacks sufficient coverage",
+                        "context_info": context_info,
+                    })
                 continue
             feature_frame = enriched
 
@@ -216,16 +235,34 @@ def build_forecast_contract(
                 feature_frame,
                 ticker=symbol,
                 model=model,
-                horizons=[horizon],
+                horizons=horizons,
                 n_splits=int(n_splits),
                 test_size=int(test_size),
                 calibration_window=calibration_window,
             )
+        except Exception as exc:
+            for row in rows:
+                errors.append({
+                    "horizon_days": int(row["horizon"]),
+                    "model": model,
+                    "context_family": context_family,
+                    "error": str(exc),
+                })
+            continue
+
+        for row in rows:
+            horizon = int(row["horizon"])
             current = _current_for_horizon(result, horizon)
             if not current:
-                raise RuntimeError("No current forecast produced")
-            diagnostic = _diagnostic_for_horizon(result, horizon)
+                errors.append({
+                    "horizon_days": horizon,
+                    "model": model,
+                    "context_family": context_family,
+                    "error": "No current forecast produced",
+                })
+                continue
 
+            diagnostic = _diagnostic_for_horizon(result, horizon)
             forecasts.append(_build_forecast_row(
                 horizon=horizon,
                 authority=row,
@@ -240,13 +277,6 @@ def build_forecast_contract(
                 "context_family": context_family,
                 "sector_ticker": sector_ticker,
                 "calibration_window": calibration_window,
-            })
-        except Exception as exc:
-            errors.append({
-                "horizon_days": horizon,
-                "model": model,
-                "context_family": context_family,
-                "error": str(exc),
             })
 
     enabled_count = sum(1 for row in authority_rows(authority) if row.get("enabled", True))

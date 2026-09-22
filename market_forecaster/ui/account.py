@@ -1,0 +1,165 @@
+"""Account UI for Market Forecaster 4.1.1 managed authentication."""
+from __future__ import annotations
+
+import streamlit as st
+
+from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
+from market_forecaster.auth.provider import AuthProviderError, InvalidCredentials
+from market_forecaster.auth.session import (
+    AUTH_SESSION_KEY,
+    auth_profile,
+    clear_authenticated_session,
+    establish_authenticated_session,
+)
+from market_forecaster.config import MULTI_USER_ENABLED
+from market_forecaster.core.session_identity import resolve_identity
+
+
+def _login_form() -> None:
+    with st.form("account_login_form", clear_on_submit=False):
+        email = st.text_input("Email", key="account_login_email")
+        password = st.text_input("Password", type="password", key="account_login_password")
+        submitted = st.form_submit_button("Sign in", type="primary", use_container_width=True)
+
+    if not submitted:
+        return
+    if not email.strip() or not password:
+        st.warning("Enter your email and password.")
+        return
+
+    try:
+        provider = get_auth_provider()
+        result = provider.login(email.strip(), password)
+        if result.tokens is None:
+            st.warning("Sign-in did not return an active session.")
+            return
+        establish_authenticated_session(
+            st.session_state,
+            result,
+            provider_name=provider.name,
+        )
+        st.success("Signed in.")
+        st.rerun()
+    except InvalidCredentials:
+        st.error("Email or password was not accepted.")
+    except AuthProviderError as exc:
+        st.error(f"Sign-in unavailable: {exc}")
+
+
+def _register_form() -> None:
+    with st.form("account_register_form", clear_on_submit=False):
+        display_name = st.text_input("Display name", key="account_register_name")
+        email = st.text_input("Email", key="account_register_email")
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="account_register_password",
+            help="Use at least 8 characters.",
+        )
+        confirm = st.text_input(
+            "Confirm password",
+            type="password",
+            key="account_register_confirm",
+        )
+        submitted = st.form_submit_button("Create account", type="primary", use_container_width=True)
+
+    if not submitted:
+        return
+    if not email.strip():
+        st.warning("Enter an email address.")
+        return
+    if len(password) < 8:
+        st.warning("Use a password with at least 8 characters.")
+        return
+    if password != confirm:
+        st.warning("Passwords do not match.")
+        return
+
+    try:
+        provider = get_auth_provider()
+        result = provider.register(email.strip(), password, display_name.strip() or None)
+        if result.requires_email_confirmation or result.tokens is None:
+            st.success(
+                "Account created. Check your email for the confirmation link, then return here to sign in."
+            )
+            return
+        establish_authenticated_session(
+            st.session_state,
+            result,
+            provider_name=provider.name,
+        )
+        st.success("Account created and signed in.")
+        st.rerun()
+    except AuthProviderError as exc:
+        st.error(f"Account creation unavailable: {exc}")
+
+
+def _signed_in_account() -> None:
+    identity = resolve_identity(st.session_state)
+    profile = auth_profile(st.session_state)
+
+    st.markdown("## Your Market Forecaster Account")
+    st.caption("Authentication is active. Persistent watchlists and portfolios arrive in 4.1.2.")
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Plan", identity.plan.title())
+    with c2:
+        st.metric("Status", "Signed in")
+    with c3:
+        st.metric("Email", profile.get("email") or "—")
+
+    with st.container(border=True):
+        st.markdown("### Account identity")
+        if profile.get("display_name"):
+            st.write(f"**Name:** {profile['display_name']}")
+        st.write(f"**Internal user ID:** {identity.user_id}")
+        st.write(f"**Authentication provider:** {identity.auth_provider or 'managed'}")
+        if profile.get("email_confirmed"):
+            st.caption("Email confirmed")
+        st.caption(
+            "The internal user ID is derived from the verified provider identity. "
+            "Browser requests cannot choose or override this ID."
+        )
+
+    if st.button("Sign out", key="account_logout", use_container_width=True):
+        auth = st.session_state.get(AUTH_SESSION_KEY) or {}
+        token = auth.get("access_token") if isinstance(auth, dict) else None
+        try:
+            if token:
+                get_auth_provider().logout(str(token))
+        except AuthProviderError:
+            pass
+        clear_authenticated_session(st.session_state)
+        st.rerun()
+
+
+def render_account_screen() -> None:
+    identity = resolve_identity(st.session_state)
+    if identity.authenticated:
+        _signed_in_account()
+        return
+
+    st.markdown("## Create your Market Forecaster account")
+    st.caption(
+        "Demo remains available without an account. Sign-in becomes the identity layer for "
+        "persistent watchlists, portfolios, forecast history and subscriptions in later 4.1 phases."
+    )
+
+    if not MULTI_USER_ENABLED:
+        st.info(
+            "The 4.1.1 authentication foundation is installed but account access is disabled by "
+            "the MULTI_USER_ENABLED feature flag."
+        )
+        return
+
+    ready, reason = auth_configuration_status()
+    if not ready:
+        st.warning(f"Account provider is not configured: {reason}")
+        return
+
+    login_tab, register_tab = st.tabs(["Sign in", "Create account"])
+    with login_tab:
+        _login_form()
+    with register_tab:
+        _register_form()
