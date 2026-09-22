@@ -100,12 +100,20 @@ jobs:
           # Market Forecaster is a Streamlit app, not a Flask/Django app.
           # Use python -m so the package installed by Oryx is resolved from
           # the deployment environment rather than relying on a global
-          # "streamlit" executable being present on PATH.
+          # "streamlit" executable being present on PATH. Streamlit also
+          # requires WebSockets for its browser session channel.
           az webapp config set \
             --resource-group "$RESOURCE_GROUP" \
             --name marketforecaster \
             --linux-fx-version "PYTHON|3.12" \
+            --web-sockets-enabled true \
             --startup-file "python -m streamlit run market_forecaster/app.py --server.address 0.0.0.0 --server.port 8000 --server.headless true"
+
+      - name: Wait for App Service configuration restart to settle
+        shell: bash
+        run: |
+          echo "Waiting for Azure SCM/app containers to settle after configuration changes..."
+          sleep 60
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
