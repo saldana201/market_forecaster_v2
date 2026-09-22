@@ -100,12 +100,26 @@ jobs:
           # Market Forecaster is a Streamlit app, not a Flask/Django app.
           # Use python -m so the package installed by Oryx is resolved from
           # the deployment environment rather than relying on a global
-          # "streamlit" executable being present on PATH.
+          # "streamlit" executable being present on PATH. Streamlit also
+          # requires WebSockets for its browser session channel.
           az webapp config set \
             --resource-group "$RESOURCE_GROUP" \
             --name marketforecaster \
             --linux-fx-version "PYTHON|3.12" \
+            --web-sockets-enabled true \
             --startup-file "python -m streamlit run market_forecaster/app.py --server.address 0.0.0.0 --server.port 8000 --server.headless true"
+
+          APP_HOST="$(az webapp show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --query defaultHostName -o tsv)"
+          echo "APP_HOST=$APP_HOST" >> "$GITHUB_ENV"
+
+      - name: Wait for App Service configuration restart to settle
+        shell: bash
+        run: |
+          echo "Waiting for Azure SCM/app containers to settle after configuration changes..."
+          sleep 60
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -113,4 +127,16 @@ jobs:
         with:
           app-name: 'marketforecaster'
           slot-name: 'Production'
+
+      - name: Verify deployed Streamlit app
+        shell: bash
+        run: |
+          echo "Waiting for https://$APP_HOST to become healthy..."
+          curl --fail --show-error --silent \
+            --retry 18 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            --max-time 20 \
+            "https://$APP_HOST/" > /dev/null
+          echo "Market Forecaster is responding successfully."
           
