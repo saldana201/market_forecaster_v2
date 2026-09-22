@@ -1,0 +1,2 @@
+# Azure/Oryx entry point for Market Forecaster runtime dependencies.
+-r market_forecaster/requirements.txt
