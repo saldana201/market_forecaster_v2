@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-__version__ = "4.1.0"
+__version__ = "4.1.1"
 APP_NAME = "Market Forecaster"
 BRAND = "OneEight AI Systems"
 
