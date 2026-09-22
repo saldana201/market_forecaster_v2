@@ -1,4 +1,4 @@
-"""Modern anonymous Demo landing experience for Market Forecaster 4.1.0."""
+"""Premium anonymous Demo landing experience for Market Forecaster 4.1.1."""
 from __future__ import annotations
 
 import html
@@ -10,15 +10,15 @@ from market_forecaster.core.session_identity import ensure_demo_session
 from market_forecaster.services.forecast_access import demo_cache_status
 from market_forecaster.ui.demo_theme import inject_demo_theme
 
-_FEATURED = ("SPY", "QQQ", "AAPL", "MSFT")
+_FEATURED = ("SPY", "QQQ", "AAPL", "MSFT", "JPM", "LLY")
 _CATEGORY_ICONS = {
-    "Technology": "◈",
-    "Financials": "◇",
-    "Healthcare": "✚",
-    "Energy": "◆",
-    "Consumer": "●",
-    "Industrials": "⬡",
-    "Broad Market": "◎",
+    "Technology": "T",
+    "Financials": "$",
+    "Healthcare": "+",
+    "Energy": "E",
+    "Consumer": "C",
+    "Industrials": "I",
+    "Broad Market": "M",
 }
 
 
@@ -60,6 +60,19 @@ def _age_label(age_hours) -> str:
     return f"Updated {int(value // 24)}d ago"
 
 
+def _move_class(expected) -> str:
+    value = _number(expected)
+    if value is None or abs(value) < 0.05:
+        return "mf-move-flat"
+    return "mf-move-up" if value > 0 else "mf-move-down"
+
+
+def _symbol_initial(row) -> str:
+    if row.category == "Broad Market":
+        return "M"
+    return _CATEGORY_ICONS.get(row.category, row.ticker[:1])
+
+
 def _render_market_card(row, status: dict, current: str) -> bool:
     selected = row.ticker == current
     available = bool(status.get("available"))
@@ -67,42 +80,70 @@ def _render_market_card(row, status: dict, current: str) -> bool:
     expected = anchor.get("expected_return_pct") if anchor else None
     probability = anchor.get("probability_up_pct") if anchor else None
     horizon = int(anchor.get("horizon_days", 0) or 0) if anchor else 0
-    outlook_label = f"{horizon}D outlook" if horizon else "Outlook"
     price = status.get("current_price")
 
-    status_class = "mf-status-ready" if available else "mf-status-wait"
-    status_text = _age_label(status.get("age_hours")) if available else "Preparing forecast"
-    selected_text = " · Selected" if selected else ""
-    icon = _CATEGORY_ICONS.get(row.category, "•")
+    prob_value = _number(probability)
+    prob_width = 50 if prob_value is None else max(3, min(100, prob_value))
+    status_text = _age_label(status.get("age_hours")) if available else "Forecast preparing"
+    status_class = "mf-ready" if available else "mf-wait"
+    selected_class = " mf-market-card-selected" if selected else ""
+    selected_tag = '<span class="mf-selected-tag">Selected</span>' if selected else ""
+    move_class = _move_class(expected)
+    horizon_label = f"{horizon}D projected move" if horizon else "Projected move"
 
-    with st.container(border=True):
-        st.markdown(
-            f"""
-<div>
-  <div class="mf-section-kicker">{html.escape(icon)} {html.escape(row.category)}{selected_text}</div>
-  <div class="mf-market-title">{html.escape(row.ticker)} · {html.escape(row.display_name)}</div>
-  <div class="mf-market-sub">{html.escape(row.asset_type.upper())} · Full-quality shared Forecast Contract</div>
-  <span class="mf-status {status_class}">{html.escape(status_text)}</span>
-  <div class="mf-card-meta">
-      <div><span>Current</span><strong>{html.escape(_fmt_money(price))}</strong></div>
-      <div><span>{html.escape(outlook_label)}</span><strong>{html.escape(_fmt_pct(expected, signed=True))}</strong></div>
-      <div><span>Chance up</span><strong>{html.escape(_fmt_pct(probability))}</strong></div>
+    st.markdown(
+        f"""
+<div class="mf-market-card{selected_class}">
+  <div class="mf-card-top">
+    <div class="mf-symbol-lockup">
+      <div class="mf-symbol-icon">{html.escape(_symbol_initial(row))}</div>
+      <div>
+        <div class="mf-ticker">{html.escape(row.ticker)}</div>
+        <div class="mf-company">{html.escape(row.display_name)}</div>
+      </div>
+    </div>
+    <span class="mf-sector-chip">{html.escape(row.category)}</span>
+  </div>
+
+  <div class="mf-price-row">
+    <div>
+      <div class="mf-price-label">Current price</div>
+      <div class="mf-price">{html.escape(_fmt_money(price))}</div>
+    </div>
+    <span class="mf-move {move_class}">{html.escape(_fmt_pct(expected, signed=True))}</span>
+  </div>
+
+  <div class="mf-prob-wrap">
+    <div class="mf-prob-head">
+      <span>Chance of finishing higher</span>
+      <strong>{html.escape(_fmt_pct(probability))}</strong>
+    </div>
+    <div class="mf-prob-track">
+      <div class="mf-prob-fill" style="width:{prob_width:.0f}%"></div>
+    </div>
+  </div>
+
+  <div class="mf-card-footer">
+    <span>{html.escape(horizon_label)}</span>
+    <span class="{status_class}">{html.escape(status_text)}</span>
+    {selected_tag}
   </div>
 </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        label = "Viewing forecast" if selected else f"View {row.ticker} forecast →"
-        clicked = st.button(
-            label,
-            key=f"demo_symbol_{row.ticker}",
-            use_container_width=True,
-            type="primary" if selected else "secondary",
-            disabled=not available,
-        )
-        if not available:
-            st.caption("This symbol will appear automatically after its scheduled cache refresh.")
-        return clicked
+        """,
+        unsafe_allow_html=True,
+    )
+
+    label = "Viewing forecast" if selected else f"Open {row.ticker} forecast"
+    clicked = st.button(
+        label,
+        key=f"demo_symbol_{row.ticker}",
+        use_container_width=True,
+        type="primary" if selected else "secondary",
+        disabled=not available,
+    )
+    if not available:
+        st.caption("Will activate automatically after the next scheduled refresh.")
+    return clicked
 
 
 def render_demo_landing(current_ticker: str | None = None) -> str:
@@ -119,21 +160,20 @@ def render_demo_landing(current_ticker: str | None = None) -> str:
         f"""
 <div class="mf-brandbar">
   <div><span class="mf-brand">OneEight AI Systems</span> / Market Forecaster</div>
-  <div><span class="mf-live-dot"></span>{ready_count}/{total_count} demo markets ready</div>
+  <div><span class="mf-live-dot"></span>{ready_count}/{total_count} markets live</div>
 </div>
 <div class="mf-hero">
-  <span class="mf-eyebrow">Free Demo · No account required</span>
-  <h1>See where the market may be headed—before you build your own watchlist.</h1>
+  <span class="mf-eyebrow">Free Market Forecast Demo</span>
+  <h1>Professional market forecasts without the clutter.</h1>
   <p>
-    Explore calibrated 1-day, 5-day, 10-day and 20-day forecasts across a curated market set.
-    Demo forecasts use the same Forecast Contract quality as the paid platform; the difference
-    is ticker access, persistence and research tooling.
+    Explore the same governed Forecast Contract used by the platform across a curated set of major markets.
+    Compare projected price, expected move, probability, and uncertainty before creating an account.
   </p>
   <div class="mf-stat-strip">
-    <div class="mf-stat"><strong>{total_count} markets</strong><span>Curated cross-sector universe</span></div>
-    <div class="mf-stat"><strong>4 horizons</strong><span>1D · 5D · 10D · 20D</span></div>
-    <div class="mf-stat"><strong>Shared cache</strong><span>No anonymous retraining</span></div>
-    <div class="mf-stat"><strong>Session private</strong><span>Watchlist & portfolio stay temporary</span></div>
+    <div class="mf-stat"><strong>{total_count} curated markets</strong><span>Technology, financials, healthcare, energy and more</span></div>
+    <div class="mf-stat"><strong>4 forecast horizons</strong><span>1D · 5D · 10D · 20D</span></div>
+    <div class="mf-stat"><strong>Full forecast quality</strong><span>Demo is not a lower-quality model</span></div>
+    <div class="mf-stat"><strong>Private session tools</strong><span>Temporary watchlist and portfolio</span></div>
   </div>
 </div>
         """,
@@ -152,8 +192,9 @@ def render_demo_landing(current_ticker: str | None = None) -> str:
 
     search = st.text_input(
         "Search the Demo universe",
-        placeholder="Search ticker or company name…",
+        placeholder="Search AAPL, JPM, Microsoft, healthcare…",
         key="demo_market_search",
+        label_visibility="collapsed",
     ).strip().lower()
 
     if selected_category == "Featured":
@@ -167,19 +208,31 @@ def render_demo_landing(current_ticker: str | None = None) -> str:
     if search:
         rows = [
             row for row in rows
-            if search in row.ticker.lower() or search in row.display_name.lower()
+            if search in row.ticker.lower()
+            or search in row.display_name.lower()
+            or search in row.category.lower()
         ]
 
-    st.markdown("### Market Explorer")
-    st.caption("Select a market to open its latest cached forecast. Unavailable cards never trigger model training.")
+    st.markdown(
+        """
+<div class="mf-section-head">
+  <div>
+    <div class="mf-section-title">Market Explorer</div>
+    <div class="mf-section-copy">Choose a market and open its latest shared forecast.</div>
+  </div>
+  <div class="mf-section-copy">Anonymous traffic never triggers model training.</div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if not rows:
         st.info("No Demo markets match that filter.")
         return current
 
-    columns = st.columns(2)
+    columns = st.columns(3)
     for idx, row in enumerate(rows):
-        with columns[idx % 2]:
+        with columns[idx % 3]:
             if _render_market_card(row, status_map.get(row.ticker, {}), current):
                 current = row.ticker
                 st.session_state["ticker"] = row.ticker
@@ -189,8 +242,9 @@ def render_demo_landing(current_ticker: str | None = None) -> str:
     st.markdown(
         """
 <div class="mf-session-note">
-<strong>Want your own ticker?</strong> Standard will unlock custom supported symbols and permanent
-watchlists/portfolios. Pro will add the Research Lab, model diagnostics and API access.
+<strong>Ready for your own symbols?</strong>
+Standard will unlock custom supported tickers plus persistent watchlists and portfolios.
+Pro will add Research Lab diagnostics, model research and API access.
 </div>
         """,
         unsafe_allow_html=True,
