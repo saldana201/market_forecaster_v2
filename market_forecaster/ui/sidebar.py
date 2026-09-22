@@ -1,4 +1,4 @@
-"""Market Forecaster 4.0.1 sidebar — forecast first, advanced controls optional."""
+"""Market Forecaster 4.1.0 sidebar — Demo simple, internal controls optional."""
 from __future__ import annotations
 
 import streamlit as st
@@ -30,19 +30,38 @@ def render_sidebar() -> ForecastRequest:
         ensure_demo_session(st.session_state)
         identity = resolve_identity(st.session_state)
         if DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated:
+            st.markdown("**FREE DEMO**")
             symbols = list(demo_tickers())
             existing = str(st.session_state.get("ticker", "SPY")).upper().strip()
             default_index = symbols.index(existing) if existing in symbols else symbols.index("SPY")
             ticker = st.selectbox(
-                "Demo symbol",
+                "Quick switch",
                 symbols,
                 index=default_index,
-                help="Anonymous Demo access is limited to the curated symbol universe and reads cached Forecast Contracts only.",
+                help="Choose from the curated Demo universe. Discover contains the full market-card explorer.",
             )
             st.session_state["ticker"] = ticker
-            st.caption("Demo mode · session-only watchlist and portfolio")
-            with st.expander("Analyze my own ticker"):
-                st.info("Custom ticker analysis is available with an account plan in a later 4.1 phase.")
+            st.caption("Full-quality cached forecasts · no account required")
+            st.markdown("---")
+            st.markdown("**Your Demo workspace**")
+            st.caption("Watchlist and portfolio are private to this temporary session.")
+            st.info("Custom tickers and permanent saves unlock with Standard. Research Lab and API access unlock with Pro.")
+            return ForecastRequest(
+                ticker=ticker,
+                period="5y",
+                interval="1d",
+                horizon=30,
+                holdout_days=15,
+                growth_mode="linear",
+                seasonality_mode="multiplicative",
+                cps=0.10,
+                sps=8.0,
+                normalize_logistic=False,
+                use_options=False,
+                use_ensemble=False,
+                use_sentiment=False,
+                use_seasonal=False,
+            )
         else:
             ticker = st.text_input(
                 "Ticker or crypto symbol",
