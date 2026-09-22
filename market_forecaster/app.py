@@ -52,6 +52,7 @@ from market_forecaster.ui.advanced_tools_panel import render_advanced_tools_pane
 from market_forecaster.ui.demo_landing import render_demo_landing
 from market_forecaster.ui.demo_watchlist import render_demo_watchlist
 from market_forecaster.ui.demo_portfolio import render_demo_portfolio
+from market_forecaster.ui.demo_plans import render_demo_plans
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -66,7 +67,6 @@ from market_forecaster.core.seasonal import SeasonalAnalyzer
 from market_forecaster.core.signals import compute_basic_signal, compute_integrated_signal
 from market_forecaster.core.options_flow_v2 import fetch_options_flow_v2, persist_options_snapshot
 from market_forecaster.core.operations import record_operation_event
-from market_forecaster.core.entitlements import can_view_research_lab
 from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 
 # AutoTune
@@ -86,7 +86,58 @@ identity = resolve_identity(st.session_state)
 is_demo = DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated
 
 # ===================================================================
-# Header
+# Product shell
+# ===================================================================
+if is_demo:
+    tab_discover, tab_watchlist, tab_portfolio, tab_plans, tab_help = st.tabs([
+        "◈ Discover",
+        "★ Watchlist",
+        "▣ Portfolio",
+        "↗ Plans",
+        "? Help",
+    ])
+
+    with tab_discover:
+        selected = render_demo_landing(req.ticker)
+        if selected != req.ticker:
+            req.ticker = selected
+        st.markdown("---")
+        render_forecast_dashboard(req.ticker)
+
+    with tab_watchlist:
+        render_demo_watchlist(req.ticker)
+
+    with tab_portfolio:
+        render_demo_portfolio()
+
+    with tab_plans:
+        render_demo_plans()
+
+    with tab_help:
+        st.markdown("## Demo Guide")
+        st.markdown(
+            """
+**Discover** shows the latest shared Forecast Contracts for the curated Demo universe.
+
+**Watchlist** lets you collect up to six Demo markets during this session.
+
+**Portfolio** lets you experiment with cash, quantity and cost basis for up to ten Demo positions.
+
+Demo forecasts are never lower-quality forecasts. The upgrade boundary is broader ticker access,
+persistent account data, advanced research tools and API access.
+
+**Session note:** a browser disconnect, app recycle or expired Streamlit session can clear Demo state.
+            """
+        )
+        show_disclaimer()
+
+    st.markdown("---")
+    st.caption(f"{BRAND} · Market Forecaster v{__version__} · Free Demo")
+    st.stop()
+
+
+# ===================================================================
+# Internal / future authenticated workspace
 # ===================================================================
 st.title("📊 Market Forecaster")
 st.write(
@@ -97,9 +148,6 @@ st.write(
 if is_analyst():
     model_availability_badges()
 
-# ===================================================================
-# Workspaces — forecast first, complexity on demand (4.0.1)
-# ===================================================================
 tab_forecast, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
     "🔮 Forecast",
     "🧪 Research Lab",
@@ -108,9 +156,6 @@ tab_forecast, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
     "📚 Help",
 ])
 
-# Legacy sections remain available inside Advanced instead of appearing as
-# top-level product concepts. Backtest/research diagnostics are handled by
-# the dedicated Research Lab and System Health workspaces.
 tab_ensemble = tab_advanced if is_trader() else None
 tab_sentiment = tab_advanced if is_analyst() else None
 tab_seasonal = tab_advanced if is_trader() else None
@@ -118,60 +163,21 @@ tab_patterns = tab_advanced if is_analyst() else None
 tab_backtest = None
 
 with tab_forecast:
-    if is_demo:
-        selected = render_demo_landing(req.ticker)
-        if selected != req.ticker:
-            req.ticker = selected
     render_forecast_dashboard(req.ticker)
-    if is_demo:
-        st.markdown("---")
-        left, right = st.columns(2)
-        with left:
-            render_demo_watchlist(req.ticker)
-        with right:
-            render_demo_portfolio()
 
 with tab_research:
-    if can_view_research_lab(identity):
-        render_research_workspace(req.ticker)
-    else:
-        st.header("🧪 Research Lab")
-        st.info("Research Lab is a Pro capability. Demo forecasts remain full-quality; the upgrade boundary is advanced research tooling.")
+    render_research_workspace(req.ticker)
 
 with tab_health:
-    if is_demo:
-        st.header("🩺 System Health")
-        st.info("System diagnostics are not exposed in anonymous Demo mode.")
-    else:
-        render_system_health_workspace(req)
+    render_system_health_workspace(req)
 
 with tab_advanced:
-    if is_demo:
-        st.header("⚙️ Advanced / Legacy Tools")
-        st.info("Advanced model execution is disabled in anonymous Demo mode. Demo traffic reads shared cached Forecast Contracts only.")
-    else:
-        st.header("Advanced / Legacy Tools")
-        st.caption(
-            "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
-            "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
-        )
-        render_advanced_tools_panel(req.ticker)
-
-if is_demo:
-    with tab_help:
-        st.header("📚 Demo Quick Start")
-        st.markdown("""
-1. Pick one of the curated Demo symbols.
-2. View its latest shared 1D / 5D / 10D / 20D Forecast Contract.
-3. Build a temporary Demo Watchlist and Demo Portfolio.
-4. Custom tickers, persistence, Research Lab, and API access are upgrade boundaries for later 4.1 phases.
-
-**Demo state is session-only.** A server recycle, timeout, or lost session can clear it.
-        """)
-        show_disclaimer()
-    st.markdown("---")
-    st.caption(f"{BRAND} · Market Forecaster v{__version__} · Anonymous Demo")
-    st.stop()
+    st.header("Advanced / Legacy Tools")
+    st.caption(
+        "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
+        "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
+    )
+    render_advanced_tools_panel(req.ticker)
 
 
 # ===================================================================
