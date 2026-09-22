@@ -31,6 +31,7 @@ jobs:
           python -m venv antenv
           source antenv/bin/activate
           pip install -r requirements.txt
+          python -m streamlit --version
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
       - name: Refresh Demo Forecast Contract cache
@@ -85,10 +86,26 @@ jobs:
             exit 1
           fi
           echo "Configuring marketforecaster in resource group: $RESOURCE_GROUP"
+
+          # The deployment artifact intentionally excludes the GitHub Actions
+          # virtualenv. Force App Service/Oryx to install requirements.txt on
+          # the Azure host during deployment.
+          az webapp config appsettings set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+              ENABLE_ORYX_BUILD=true
+
+          # Market Forecaster is a Streamlit app, not a Flask/Django app.
+          # Use python -m so the package installed by Oryx is resolved from
+          # the deployment environment rather than relying on a global
+          # "streamlit" executable being present on PATH.
           az webapp config set \
             --resource-group "$RESOURCE_GROUP" \
             --name marketforecaster \
-            --linux-fx-version "PYTHON|3.12"
+            --linux-fx-version "PYTHON|3.12" \
+            --startup-file "python -m streamlit run market_forecaster/app.py --server.address 0.0.0.0 --server.port 8000 --server.headless true"
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
