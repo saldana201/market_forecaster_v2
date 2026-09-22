@@ -1,0 +1,5 @@
+# Optional Model Tournament dependencies — not required by production runtime.
+# Install only on a research workstation/environment when running these challengers.
+lightgbm>=4.6,<5
+catboost>=1.2.8,<2
+torch>=2.10,<3
