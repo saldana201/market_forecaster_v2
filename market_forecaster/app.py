@@ -53,6 +53,7 @@ from market_forecaster.ui.demo_landing import render_demo_landing
 from market_forecaster.ui.demo_watchlist import render_demo_watchlist
 from market_forecaster.ui.demo_portfolio import render_demo_portfolio
 from market_forecaster.ui.demo_plans import render_demo_plans
+from market_forecaster.ui.demo_theme import inject_demo_theme
 from market_forecaster.ui.account import render_account_screen
 from market_forecaster.ui.user_data_workspace import (
     render_persistent_watchlist,
@@ -108,38 +109,52 @@ is_demo = DEMO_MODE_ENABLED and not identity.authenticated
 # Product shell
 # ===================================================================
 if is_demo:
-    tab_discover, tab_watchlist, tab_portfolio, tab_plans, tab_account, tab_help = st.tabs([
+    # Use Streamlit's segmented control instead of st.tabs for the public Demo
+    # navigation. This avoids browser/theme-specific BaseWeb tab rendering issues
+    # and only renders the selected Demo workspace on each rerun.
+    inject_demo_theme()
+    demo_nav_options = (
         "◈ Discover",
         "★ Watchlist",
         "▣ Portfolio",
         "↗ Plans",
         "◎ Account",
         "? Help",
-    ])
+    )
+    if st.session_state.get("demo_navigation") not in demo_nav_options:
+        st.session_state["demo_navigation"] = demo_nav_options[0]
 
-    with tab_discover:
+    demo_page = st.segmented_control(
+        "Demo navigation",
+        demo_nav_options,
+        key="demo_navigation",
+        label_visibility="collapsed",
+    )
+    demo_page = demo_page or demo_nav_options[0]
+
+    if demo_page == "◈ Discover":
         selected = render_demo_landing(req.ticker)
         if selected != req.ticker:
             req.ticker = selected
         st.markdown("---")
         render_forecast_dashboard(req.ticker)
 
-    with tab_watchlist:
+    elif demo_page == "★ Watchlist":
         render_demo_watchlist(req.ticker)
 
-    with tab_portfolio:
+    elif demo_page == "▣ Portfolio":
         render_demo_portfolio()
 
-    with tab_plans:
+    elif demo_page == "↗ Plans":
         render_demo_plans()
 
-    with tab_account:
+    elif demo_page == "◎ Account":
         notice = st.session_state.pop("auth_notice", None)
         if notice:
             st.warning(notice)
         render_account_screen()
 
-    with tab_help:
+    elif demo_page == "? Help":
         st.markdown("## Demo Guide")
         st.markdown(
             """
