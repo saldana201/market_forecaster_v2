@@ -21,6 +21,14 @@ class InvalidToken(AuthProviderError):
     """Raised when an access token is expired, malformed, or rejected."""
 
 
+class RateLimited(AuthProviderError):
+    """Raised when the managed auth provider applies a temporary cooldown."""
+
+    def __init__(self, message: str, retry_after_seconds: int | None = None):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 @dataclass(frozen=True)
 class AuthUser:
     subject: str

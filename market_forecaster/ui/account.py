@@ -1,10 +1,12 @@
 """Account UI for Market Forecaster 4.1.1 managed authentication."""
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
-from market_forecaster.auth.provider import AuthProviderError, InvalidCredentials
+from market_forecaster.auth.provider import AuthProviderError, InvalidCredentials, RateLimited
 from market_forecaster.auth.session import (
     AUTH_SESSION_KEY,
     auth_profile,
@@ -80,12 +82,23 @@ def _register_form() -> None:
         st.warning("Passwords do not match.")
         return
 
+    cooldown_until = float(st.session_state.get("account_signup_cooldown_until", 0.0) or 0.0)
+    remaining = max(0, int(round(cooldown_until - time.time())))
+    if remaining > 0:
+        st.warning(
+            f"A signup confirmation was requested recently. Please wait about {remaining} seconds, "
+            "then try again only if you have not received the confirmation email."
+        )
+        return
+
     try:
         provider = get_auth_provider()
         result = provider.register(email.strip(), password, display_name.strip() or None)
         if result.requires_email_confirmation or result.tokens is None:
+            st.session_state["account_signup_cooldown_until"] = time.time() + 60
             st.success(
-                "Account created. Check your email for the confirmation link, then return here to sign in."
+                "Account request submitted. Check your email for the confirmation link, then return here to sign in. "
+                "Do not press Create account again unless the email does not arrive after about a minute."
             )
             return
         establish_authenticated_session(
@@ -95,6 +108,14 @@ def _register_form() -> None:
         )
         st.success("Account created and signed in.")
         st.rerun()
+    except RateLimited as exc:
+        retry = int(exc.retry_after_seconds or 60)
+        st.session_state["account_signup_cooldown_until"] = time.time() + max(1, retry)
+        st.warning(
+            f"Supabase is protecting against duplicate signup requests. Wait about {retry} seconds "
+            "before trying again. If this was your second click, check your email first—the initial "
+            "account request may already have been accepted."
+        )
     except AuthProviderError as exc:
         st.error(f"Account creation unavailable: {exc}")
 

@@ -9,6 +9,7 @@ from market_forecaster.auth.provider import (
     AuthUser,
     InvalidCredentials,
     InvalidToken,
+    RateLimited,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "AuthUser",
     "InvalidCredentials",
     "InvalidToken",
+    "RateLimited",
 ]
