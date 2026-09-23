@@ -99,7 +99,7 @@ def _signed_in_account() -> None:
     profile = auth_profile(st.session_state)
 
     st.markdown("## Your Market Forecaster Account")
-    st.caption("Authentication is active. Persistent watchlists and portfolios arrive in 4.1.2.")
+    st.caption("Authentication is active. Watchlists and portfolios can now persist securely when account storage is enabled.")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -143,7 +143,7 @@ def render_account_screen() -> None:
     st.markdown("## Create your Market Forecaster account")
     st.caption(
         "Demo remains available without an account. Sign-in becomes the identity layer for "
-        "persistent watchlists, portfolios, forecast history and subscriptions in later 4.1 phases."
+        "persistent watchlists and portfolios in 4.1.2, with forecast history and subscriptions in later 4.1 phases."
     )
 
     if not MULTI_USER_ENABLED:
