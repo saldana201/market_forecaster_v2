@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from io import BytesIO
+from urllib import error
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from market_forecaster.api.routes import account as account_routes
-from market_forecaster.auth.provider import AuthResult, AuthTokens, AuthUser, InvalidToken
+from market_forecaster.auth.provider import AuthResult, AuthTokens, AuthUser, InvalidToken, RateLimited
+from market_forecaster.auth.supabase import SupabaseAuthProvider
 from market_forecaster.auth.session import (
     AUTH_SESSION_KEY,
     clear_authenticated_session,
@@ -170,3 +174,34 @@ def test_account_api_rejects_invalid_or_expired_token(monkeypatch):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid or expired bearer token"
+
+
+def test_supabase_signup_rate_limit_exposes_retry_seconds(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+
+    body = b'{"message":"For security purposes, you can only request this after 37 seconds."}'
+    http_error = error.HTTPError(
+        url="https://example.supabase.co/auth/v1/signup",
+        code=429,
+        msg="Too Many Requests",
+        hdrs={},
+        fp=BytesIO(body),
+    )
+
+    def raise_rate_limit(*args, **kwargs):
+        raise http_error
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        raise_rate_limit,
+    )
+
+    try:
+        provider.register("test@example.com", "password123", "Test User")
+        assert False, "Expected RateLimited"
+    except RateLimited as exc:
+        assert exc.retry_after_seconds == 37
+        assert "37 seconds" in str(exc)
