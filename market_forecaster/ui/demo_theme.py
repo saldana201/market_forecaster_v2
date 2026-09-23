@@ -350,9 +350,27 @@ div[data-testid="stTabs"] [data-baseweb="tab"] {
     border-radius:11px;
     padding:.5rem .95rem;
     font-weight:650;
+    color:#cbd5e1 !important;
+    opacity:1 !important;
+    transition:background .16s ease, color .16s ease, border-color .16s ease;
+}
+div[data-testid="stTabs"] [data-baseweb="tab"] p,
+div[data-testid="stTabs"] [data-baseweb="tab"] span {
+    color:inherit !important;
+    opacity:1 !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    color:#ffffff !important;
+    background:rgba(59,130,246,.10);
 }
 div[data-testid="stTabs"] [aria-selected="true"] {
-    background:linear-gradient(110deg, rgba(8,145,178,.16), rgba(37,99,235,.15));
+    color:#f8fafc !important;
+    background:linear-gradient(110deg, rgba(8,145,178,.22), rgba(37,99,235,.24));
+    box-shadow:inset 0 0 0 1px rgba(96,165,250,.18);
+}
+div[data-testid="stTabs"] [aria-selected="true"] p,
+div[data-testid="stTabs"] [aria-selected="true"] span {
+    color:#f8fafc !important;
 }
 
 div[data-testid="stMetric"] {
