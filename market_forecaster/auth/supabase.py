@@ -124,8 +124,27 @@ class SupabaseAuthProvider:
         payload: dict = {"email": email.strip(), "password": password}
         if display_name:
             payload["data"] = {"display_name": display_name.strip()}
+
         result = self._request("/auth/v1/signup", method="POST", payload=payload)
-        user = self._user(result.get("user"))
+
+        # GoTrue/Supabase signup responses can surface the created user in two
+        # valid shapes depending on endpoint/runtime behavior:
+        #
+        #   {"user": {"id": ...}, "access_token": ...}
+        #   {"id": ..., "email": ..., "user_metadata": ...}
+        #
+        # Email-confirmation signups commonly have no active session/token yet.
+        nested_user = result.get("user")
+        if isinstance(nested_user, dict) and nested_user.get("id"):
+            user_payload = nested_user
+        elif result.get("id"):
+            user_payload = result
+        else:
+            raise AuthProviderError(
+                "Signup was accepted but the authentication provider returned no usable user identity."
+            )
+
+        user = self._user(user_payload)
         tokens = self._tokens(result)
         return AuthResult(
             user=user,

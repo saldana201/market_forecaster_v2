@@ -205,3 +205,82 @@ def test_supabase_signup_rate_limit_exposes_retry_seconds(monkeypatch):
     except RateLimited as exc:
         assert exc.retry_after_seconds == 37
         assert "37 seconds" in str(exc)
+
+
+def test_supabase_signup_accepts_top_level_user_response(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+
+    payload = {
+        "id": "82a2b547-f82b-4a6c-b75a-7b04b94dc5e0",
+        "email": "jrsaldana32@gmail.com",
+        "user_metadata": {"display_name": "Saldana"},
+        "email_confirmed_at": None,
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    result = provider.register(
+        "jrsaldana32@gmail.com",
+        "password123",
+        "Saldana",
+    )
+
+    assert result.user.subject == payload["id"]
+    assert result.user.email == "jrsaldana32@gmail.com"
+    assert result.user.display_name == "Saldana"
+    assert result.tokens is None
+    assert result.requires_email_confirmation is True
+
+
+def test_supabase_signup_still_accepts_nested_user_response(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+
+    payload = {
+        "user": {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "email": "nested@example.com",
+            "user_metadata": {"display_name": "Nested"},
+            "email_confirmed_at": None,
+        }
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    result = provider.register("nested@example.com", "password123", "Nested")
+
+    assert result.user.subject == payload["user"]["id"]
+    assert result.requires_email_confirmation is True
