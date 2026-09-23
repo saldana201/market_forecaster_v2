@@ -8,7 +8,6 @@ import streamlit as st
 from market_forecaster.core.demo_universe import demo_groups, demo_symbols
 from market_forecaster.core.session_identity import ensure_demo_session
 from market_forecaster.services.forecast_access import demo_cache_status
-from market_forecaster.ui.demo_theme import inject_demo_theme
 
 _FEATURED = ("SPY", "QQQ", "AAPL", "MSFT", "JPM", "LLY")
 _CATEGORY_ICONS = {
@@ -147,7 +146,6 @@ def _render_market_card(row, status: dict, current: str) -> bool:
 
 
 def render_demo_landing(current_ticker: str | None = None) -> str:
-    inject_demo_theme()
     ensure_demo_session(st.session_state)
     current = str(current_ticker or st.session_state.get("ticker") or "SPY").upper().strip()
 

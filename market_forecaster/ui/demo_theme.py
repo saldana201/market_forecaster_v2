@@ -373,6 +373,61 @@ div[data-testid="stTabs"] [aria-selected="true"] span {
     color:#f8fafc !important;
 }
 
+/* Public Demo navigation uses st.segmented_control rather than BaseWeb tabs.
+   Target both current and fallback Streamlit test IDs so the control stays
+   visible across Streamlit frontend changes. */
+div[data-testid="stButtonGroup"],
+div[data-testid="stSegmentedControl"] {
+    width:100%;
+    margin:0 0 1rem 0;
+}
+div[data-testid="stButtonGroup"] > div,
+div[data-testid="stSegmentedControl"] > div {
+    display:flex !important;
+    flex-wrap:wrap !important;
+    gap:.42rem !important;
+    width:100% !important;
+    padding:.38rem !important;
+    border:1px solid rgba(148,163,184,.14) !important;
+    border-radius:16px !important;
+    background:rgba(8,18,34,.72) !important;
+    visibility:visible !important;
+    opacity:1 !important;
+    min-height:3.1rem !important;
+}
+div[data-testid="stButtonGroup"] button,
+div[data-testid="stSegmentedControl"] button {
+    color:#dbeafe !important;
+    background:transparent !important;
+    border:1px solid transparent !important;
+    border-radius:11px !important;
+    min-height:2.35rem !important;
+    padding:.48rem .9rem !important;
+    font-weight:750 !important;
+    visibility:visible !important;
+    opacity:1 !important;
+}
+div[data-testid="stButtonGroup"] button:hover,
+div[data-testid="stSegmentedControl"] button:hover {
+    color:#ffffff !important;
+    background:rgba(59,130,246,.12) !important;
+    border-color:rgba(96,165,250,.18) !important;
+}
+div[data-testid="stButtonGroup"] button[aria-pressed="true"],
+div[data-testid="stButtonGroup"] button[aria-checked="true"],
+div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
+div[data-testid="stSegmentedControl"] button[aria-checked="true"] {
+    color:#ffffff !important;
+    background:linear-gradient(110deg, rgba(8,145,178,.24), rgba(37,99,235,.27)) !important;
+    border-color:rgba(96,165,250,.24) !important;
+    box-shadow:0 8px 20px rgba(37,99,235,.13) !important;
+}
+div[data-testid="stButtonGroup"] button *,
+div[data-testid="stSegmentedControl"] button * {
+    color:inherit !important;
+    opacity:1 !important;
+}
+
 div[data-testid="stMetric"] {
     padding:.8rem .9rem;
     border:1px solid rgba(148,163,184,.11);
