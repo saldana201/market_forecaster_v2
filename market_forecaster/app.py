@@ -54,6 +54,10 @@ from market_forecaster.ui.demo_watchlist import render_demo_watchlist
 from market_forecaster.ui.demo_portfolio import render_demo_portfolio
 from market_forecaster.ui.demo_plans import render_demo_plans
 from market_forecaster.ui.account import render_account_screen
+from market_forecaster.ui.user_data_workspace import (
+    render_persistent_watchlist,
+    render_persistent_portfolio,
+)
 
 # Core
 from market_forecaster.core.data import fetch_stock_data, get_close_series, infer_forecast_freq
@@ -170,8 +174,10 @@ st.write(
 if is_analyst():
     model_availability_badges()
 
-tab_forecast, tab_account, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
+tab_forecast, tab_watchlist, tab_portfolio, tab_account, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
     "🔮 Forecast",
+    "★ Watchlist",
+    "▣ Portfolio",
     "◎ Account",
     "🧪 Research Lab",
     "🩺 System Health",
@@ -187,6 +193,12 @@ tab_backtest = None
 
 with tab_forecast:
     render_forecast_dashboard(req.ticker)
+
+with tab_watchlist:
+    render_persistent_watchlist(req.ticker)
+
+with tab_portfolio:
+    render_persistent_portfolio()
 
 with tab_account:
     render_account_screen()
