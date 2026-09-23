@@ -6,6 +6,7 @@ application passwords itself.
 from __future__ import annotations
 
 import json
+import re
 from urllib import error, request
 
 from market_forecaster.auth.provider import (
@@ -16,6 +17,7 @@ from market_forecaster.auth.provider import (
     AuthUser,
     InvalidCredentials,
     InvalidToken,
+    RateLimited,
 )
 
 
@@ -69,6 +71,18 @@ class SupabaseAuthProvider:
                 )
             except Exception:
                 pass
+            if exc.code == 429:
+                retry_after = None
+                try:
+                    header_value = exc.headers.get("Retry-After")
+                    retry_after = int(header_value) if header_value else None
+                except Exception:
+                    retry_after = None
+                if retry_after is None:
+                    match = re.search(r"after\s+(\d+)\s+seconds?", str(message), re.IGNORECASE)
+                    if match:
+                        retry_after = int(match.group(1))
+                raise RateLimited(str(message), retry_after_seconds=retry_after) from exc
             if exc.code in {401, 403}:
                 if access_token:
                     raise InvalidToken(str(message)) from exc
