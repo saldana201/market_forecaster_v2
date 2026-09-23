@@ -24,10 +24,27 @@ def inject_demo_theme() -> None:
     --mf-amber: #f59e0b;
 }
 
-.block-container {
-    max-width: 1500px;
-    padding-top: 1rem;
-    padding-bottom: 3.25rem;
+section[data-testid="stMain"] {
+    overflow-x:hidden;
+}
+
+.block-container,
+div[data-testid="stMainBlockContainer"] {
+    width:100%;
+    max-width:1500px;
+    min-width:0;
+    box-sizing:border-box;
+    padding-top:4.75rem;
+    padding-right:clamp(1rem, 2.2vw, 2.5rem);
+    padding-bottom:3.25rem;
+    padding-left:clamp(1rem, 2.2vw, 2.5rem);
+    overflow-x:hidden;
+}
+
+.block-container > div,
+div[data-testid="stMainBlockContainer"] > div {
+    min-width:0;
+    max-width:100%;
 }
 
 .mf-brandbar {
@@ -57,6 +74,10 @@ def inject_demo_theme() -> None:
 
 .mf-hero {
     position:relative;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    box-sizing:border-box;
     overflow:hidden;
     padding:2.3rem 2.35rem 2rem 2.35rem;
     border:1px solid rgba(96,165,250,.20);
@@ -95,15 +116,19 @@ def inject_demo_theme() -> None:
     text-transform:uppercase;
 }
 .mf-hero h1 {
-    max-width:900px;
+    width:100%;
+    max-width:min(900px, 100%);
     margin:.9rem 0 .62rem 0;
     color:var(--mf-text);
-    font-size:clamp(2.2rem,4.2vw,3.85rem);
-    line-height:1.0;
+    font-size:clamp(2rem,4vw,3.85rem);
+    line-height:1.02;
     letter-spacing:-.045em;
+    overflow-wrap:normal;
+    word-break:normal;
 }
 .mf-hero p {
-    max-width:830px;
+    width:100%;
+    max-width:min(830px, 100%);
     margin:0;
     color:#cbd5e1;
     font-size:1.02rem;
@@ -440,12 +465,20 @@ div[data-testid="stNumberInput"] input {
     border-radius:12px !important;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1100px) {
     .mf-stat-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .mf-hero h1 { font-size:clamp(2rem,5.5vw,3.2rem); }
 }
 @media (max-width: 760px) {
+    .block-container,
+    div[data-testid="stMainBlockContainer"] {
+        padding-top:4.5rem;
+        padding-right:1rem;
+        padding-left:1rem;
+    }
     .mf-hero { padding:1.45rem; border-radius:20px; }
-    .mf-stat-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .mf-hero h1 { font-size:clamp(2rem,9vw,2.75rem); line-height:1.04; }
+    .mf-stat-strip { grid-template-columns:1fr; }
     .mf-market-card { min-height:0; }
     .mf-section-head { align-items:flex-start; flex-direction:column; gap:.25rem; }
 }
