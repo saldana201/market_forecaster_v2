@@ -109,12 +109,31 @@ def _register_form() -> None:
         st.success("Account created and signed in.")
         st.rerun()
     except RateLimited as exc:
+        # A repeated signup for an already-created account can hit Supabase's
+        # confirmation cooldown. If the supplied password is valid, recover by
+        # signing the user into the existing account instead of treating this
+        # as another failed registration attempt.
+        try:
+            existing = provider.login(email.strip(), password)
+            if existing.tokens is not None:
+                establish_authenticated_session(
+                    st.session_state,
+                    existing,
+                    provider_name=provider.name,
+                )
+                st.session_state.pop("account_signup_cooldown_until", None)
+                st.success("That account already exists. Signed you in instead.")
+                st.rerun()
+                return
+        except AuthProviderError:
+            pass
+
         retry = int(exc.retry_after_seconds or 60)
         st.session_state["account_signup_cooldown_until"] = time.time() + max(1, retry)
         st.warning(
-            f"Supabase is protecting against duplicate signup requests. Wait about {retry} seconds "
-            "before trying again. If this was your second click, check your email first—the initial "
-            "account request may already have been accepted."
+            f"A signup request was already sent recently. Wait about {retry} seconds before "
+            "requesting another confirmation email. If you already confirmed this account, "
+            "use the Sign in tab instead of Create account."
         )
     except AuthProviderError as exc:
         st.error(f"Account creation unavailable: {exc}")
@@ -178,10 +197,10 @@ def render_account_screen() -> None:
         _signed_in_account()
         return
 
-    st.markdown("## Create your Market Forecaster account")
+    st.markdown("## Sign in or create your Market Forecaster account")
     st.caption(
-        "Demo remains available without an account. Sign-in becomes the identity layer for "
-        "persistent watchlists and portfolios in 4.1.2, with forecast history and subscriptions in later 4.1 phases."
+        "Already created or confirmed an account? Use Sign in—do not submit Create account again. "
+        "Demo remains available without an account, while signed-in accounts can persist watchlists and portfolios."
     )
 
     if not MULTI_USER_ENABLED:
