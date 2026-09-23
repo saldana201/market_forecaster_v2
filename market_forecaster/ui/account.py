@@ -13,6 +13,11 @@ from market_forecaster.auth.session import (
 )
 from market_forecaster.config import MULTI_USER_ENABLED
 from market_forecaster.core.session_identity import resolve_identity
+from market_forecaster.persistence.supabase_data import PersistenceError
+from market_forecaster.services.user_data import (
+    ensure_account_foundation,
+    persistence_configuration_status,
+)
 
 
 def _login_form() -> None:
@@ -99,15 +104,27 @@ def _signed_in_account() -> None:
     profile = auth_profile(st.session_state)
 
     st.markdown("## Your Market Forecaster Account")
-    st.caption("Authentication is active. Persistent watchlists and portfolios arrive in 4.1.2.")
+    st.caption("Authentication is active. Watchlists and portfolios can now persist securely when account storage is enabled.")
 
-    c1, c2, c3 = st.columns(3)
+    persistence_ready, persistence_reason = persistence_configuration_status()
+
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("Plan", identity.plan.title())
     with c2:
         st.metric("Status", "Signed in")
     with c3:
         st.metric("Email", profile.get("email") or "—")
+    with c4:
+        st.metric("Account storage", "Enabled" if persistence_ready else "Disabled")
+
+    if persistence_ready:
+        try:
+            ensure_account_foundation(st.session_state, identity)
+        except PersistenceError as exc:
+            st.warning(f"Account storage could not initialize: {exc}")
+    else:
+        st.caption(f"Persistent storage is not active in this deployment: {persistence_reason}")
 
     with st.container(border=True):
         st.markdown("### Account identity")
@@ -143,7 +160,7 @@ def render_account_screen() -> None:
     st.markdown("## Create your Market Forecaster account")
     st.caption(
         "Demo remains available without an account. Sign-in becomes the identity layer for "
-        "persistent watchlists, portfolios, forecast history and subscriptions in later 4.1 phases."
+        "persistent watchlists and portfolios in 4.1.2, with forecast history and subscriptions in later 4.1 phases."
     )
 
     if not MULTI_USER_ENABLED:
