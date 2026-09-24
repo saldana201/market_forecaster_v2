@@ -18,7 +18,8 @@ import streamlit as st
 from datetime import timedelta
 
 from market_forecaster.config import (
-    __version__, BRAND, DISCLAIMER, DEMO_MODE_ENABLED, MULTI_USER_ENABLED, ForecastRequest,
+    __version__, BRAND, DISCLAIMER, DEMO_MODE_ENABLED, MULTI_USER_ENABLED,
+    SUBSCRIPTIONS_ENABLED, ForecastRequest,
 )
 from market_forecaster.ui.sidebar import render_sidebar
 from market_forecaster.ui.components import (
@@ -78,6 +79,7 @@ from market_forecaster.core.entitlements import can_view_research_lab
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
 from market_forecaster.auth.provider import AuthProviderError, InvalidToken
 from market_forecaster.auth.session import sync_authenticated_identity
+from market_forecaster.services.subscriptions import sync_subscription_identity
 
 # AutoTune
 from market_forecaster.autotune.tuner import run_autotune
@@ -100,6 +102,15 @@ if MULTI_USER_ENABLED:
             st.session_state["auth_notice"] = "Your account session expired. Please sign in again."
         except AuthProviderError:
             st.session_state["auth_notice"] = "Account verification is temporarily unavailable. Please sign in again."
+
+if SUBSCRIPTIONS_ENABLED:
+    current_identity = resolve_identity(st.session_state)
+    if current_identity.authenticated:
+        current_identity = sync_subscription_identity(st.session_state, current_identity)
+        if current_identity.subscription_status == "unavailable":
+            st.session_state["auth_notice"] = (
+                "Subscription status is temporarily unavailable. Paid features are locked until it can be verified."
+            )
 
 req = render_sidebar()
 identity = resolve_identity(st.session_state)
