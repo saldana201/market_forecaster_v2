@@ -38,6 +38,7 @@ from market_forecaster.api.routes import public_demo as public_demo_routes
 from market_forecaster.api.routes import account as account_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
+from market_forecaster.api.shared_rate_limit import SharedRateLimiter
 from market_forecaster.config import (
     DISCLAIMER,
     MULTI_USER_ENABLED,
@@ -70,10 +71,17 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
 )
+shared_rate_limiter = SharedRateLimiter(
+    requests=settings.rate_limit_requests,
+    window_seconds=settings.rate_limit_window_seconds,
+    enabled=settings.shared_rate_limit_enabled,
+)
+
 app.add_middleware(
     RateLimitMiddleware,
     requests=settings.rate_limit_requests,
     window_seconds=settings.rate_limit_window_seconds,
+    shared_limiter=shared_rate_limiter,
 )
 app.add_middleware(RequestContextMiddleware)
 
@@ -139,6 +147,7 @@ async def ready():
     # Import/config validation happens at module import. Report optional model state here.
     shared_ready, shared_reason = shared_read_configuration_status()
     authority_ready, authority_reason = shared_authority_read_configuration_status()
+    rate_limit_ready, rate_limit_reason = shared_rate_limiter.configured()
     return {
         "status": "ready",
         "version": __version__,
@@ -160,6 +169,12 @@ async def ready():
                 "local_fallback" if SHARED_AUTHORITY_ENABLED else "disabled"
             ),
             "reason": None if authority_ready else authority_reason,
+        },
+        "shared_api_rate_limit": {
+            "enabled": settings.shared_rate_limit_enabled,
+            "configured": rate_limit_ready,
+            "status": "shared" if rate_limit_ready else "local_fallback",
+            "reason": None if rate_limit_ready else rate_limit_reason,
         },
         "models_available": {
             "prophet": True,
