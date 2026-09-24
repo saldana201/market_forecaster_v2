@@ -72,6 +72,10 @@ def can_save_portfolio(identity: AppIdentity) -> bool:
     return entitlements_for(identity).persistent_storage
 
 
+def can_save_forecast_history(identity: AppIdentity) -> bool:
+    return entitlements_for(identity).persistent_storage
+
+
 def can_view_research_lab(identity: AppIdentity) -> bool:
     return entitlements_for(identity).research_lab
 
