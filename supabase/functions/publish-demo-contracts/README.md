@@ -14,7 +14,7 @@ Authentication flow:
    - repository: `saldana201/market_forecaster_v2`
    - ref: `refs/heads/master`
    - workflow: `.github/workflows/refresh_demo_contracts.yml`
-   - event: `schedule` or `workflow_dispatch`
+   - event: `schedule`, `workflow_dispatch`, or a publisher-file `push` on master
 5. Only then does the function use Supabase's internal service-role environment
    to read shared Forecast Authority or publish shared Forecast Contracts.
 
