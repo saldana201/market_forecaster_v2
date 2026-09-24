@@ -17,8 +17,11 @@ from market_forecaster.config import MULTI_USER_ENABLED
 from market_forecaster.core.session_identity import resolve_identity
 from market_forecaster.persistence.supabase_data import PersistenceError
 from market_forecaster.services.user_data import (
+    client_for_state,
     ensure_account_foundation,
+    load_user_preferences,
     persistence_configuration_status,
+    save_user_preferences,
 )
 from market_forecaster.ui.billing import render_billing_panel
 
@@ -140,6 +143,76 @@ def _register_form() -> None:
         st.error(f"Account creation unavailable: {exc}")
 
 
+def _preferences_panel(identity) -> None:
+    ready, reason = persistence_configuration_status()
+    if not ready:
+        return
+
+    try:
+        client = client_for_state(st.session_state, identity)
+        preferences = load_user_preferences(client, identity)
+    except PersistenceError as exc:
+        st.warning(f"Preferences could not be loaded: {exc}")
+        return
+
+    with st.container(border=True):
+        st.markdown("### Preferences")
+        st.caption("These settings follow your account across browsers and devices.")
+
+        current_ticker = str(preferences.get("default_ticker") or "").upper().strip()
+        default_ticker = st.text_input(
+            "Default ticker",
+            value=current_ticker,
+            placeholder="SPY",
+            max_chars=20,
+            key="account_default_ticker",
+            help="This ticker opens automatically the next time your account preferences are loaded.",
+        ).upper().strip()
+
+        timezone_options = [
+            "America/Chicago",
+            "America/New_York",
+            "America/Denver",
+            "America/Los_Angeles",
+            "UTC",
+        ]
+        current_timezone = str(preferences.get("timezone") or "America/Chicago")
+        timezone_index = (
+            timezone_options.index(current_timezone)
+            if current_timezone in timezone_options
+            else 0
+        )
+        timezone_value = st.selectbox(
+            "Timezone",
+            timezone_options,
+            index=timezone_index,
+            key="account_timezone",
+        )
+
+        if st.button(
+            "Save preferences",
+            key="account_preferences_save",
+            use_container_width=True,
+        ):
+            try:
+                saved = save_user_preferences(
+                    client,
+                    identity,
+                    default_ticker=default_ticker or None,
+                    timezone=timezone_value,
+                    settings=preferences.get("settings")
+                    if isinstance(preferences.get("settings"), dict)
+                    else {},
+                )
+                st.session_state["user_preferences"] = saved
+                st.session_state["_preferences_loaded_for"] = identity.auth_subject
+                if default_ticker:
+                    st.session_state["ticker"] = default_ticker
+                st.success("Preferences saved.")
+            except PersistenceError as exc:
+                st.error(f"Could not save preferences: {exc}")
+
+
 def _signed_in_account() -> None:
     identity = resolve_identity(st.session_state)
     profile = auth_profile(st.session_state)
@@ -180,6 +253,7 @@ def _signed_in_account() -> None:
             "Browser requests cannot choose or override this ID."
         )
 
+    _preferences_panel(identity)
     render_billing_panel()
 
     if st.button("Sign out", key="account_logout", use_container_width=True):
