@@ -57,6 +57,7 @@ Core:
     MULTI_USER_ENABLED=true
     DATABASE_PERSISTENCE_ENABLED=true
     SHARED_CONTRACT_STORAGE_ENABLED=true
+    SHARED_AUTHORITY_ENABLED=true
 
 Billing remains separately controlled:
 
@@ -97,16 +98,26 @@ Recommended Azure alerts:
 
 ## 7. Rate limiting
 
-The existing FastAPI RateLimitMiddleware is per-process.
+FastAPI supports a shared fixed-window limiter backed by the private Supabase
+`api_rate_limit_buckets` table and the
+`consume_market_forecaster_rate_limit` RPC.
 
-It is suitable only as an immediate single-instance guardrail.
+For the API host, configure:
 
-Before horizontally scaling the public API, move rate limiting to a shared layer such as:
-- Azure API Management
-- Azure Front Door/WAF rules where applicable
-- shared Redis-backed application limiting
+    MARKET_FORECASTER_SHARED_RATE_LIMIT_ENABLED=true
+    MARKET_FORECASTER_RATE_LIMIT_REQUESTS=30
+    MARKET_FORECASTER_RATE_LIMIT_WINDOW_SECONDS=60
 
-Do not describe the current in-process limiter as multi-instance safe.
+The limiter derives an HMAC bucket from the client identifier. Raw client IPs are
+not persisted in Supabase. The HMAC secret comes from
+`MARKET_FORECASTER_RATE_LIMIT_HASH_SECRET` when configured, otherwise the
+production API key is used as the server-side secret.
+
+If the shared backend is temporarily unavailable, RateLimitMiddleware falls back
+to its existing per-process limiter so the API remains available.
+
+For larger public API scale, Azure API Management or Front Door/WAF can still be
+placed in front as an additional abuse-protection layer.
 
 ## 8. Secrets
 
