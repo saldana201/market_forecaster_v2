@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -12,6 +13,11 @@ from threading import Lock
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
+from market_forecaster.api.shared_rate_limit import (
+    SharedRateLimitError,
+    SharedRateLimiter,
+)
 
 logger = logging.getLogger("market_forecaster.api")
 
@@ -45,16 +51,25 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-process fixed-window limiter.
+    """Shared limiter with an in-process fallback.
 
-    This is an immediate production guardrail. For horizontal scale, replace with
-    a shared Redis-backed limiter at the gateway/application layer.
+    When the shared Supabase limiter is configured, all API instances consume
+    the same fixed-window bucket. If that backend is temporarily unavailable,
+    the existing process-local limiter remains an availability-safe fallback.
     """
 
-    def __init__(self, app, *, requests: int, window_seconds: int):
+    def __init__(
+        self,
+        app,
+        *,
+        requests: int,
+        window_seconds: int,
+        shared_limiter: SharedRateLimiter | None = None,
+    ):
         super().__init__(app)
         self.requests = requests
         self.window_seconds = window_seconds
+        self.shared_limiter = shared_limiter
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = Lock()
 
@@ -67,6 +82,40 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
         client = forwarded or (request.client.host if request.client else "unknown")
+
+        if self.shared_limiter is not None:
+            ready, _reason = self.shared_limiter.configured()
+            if ready:
+                try:
+                    result = await asyncio.to_thread(
+                        self.shared_limiter.consume,
+                        client,
+                    )
+                    if not result.allowed:
+                        request_id = getattr(
+                            request.state,
+                            "request_id",
+                            uuid.uuid4().hex,
+                        )
+                        return JSONResponse(
+                            status_code=429,
+                            content={
+                                "detail": "Rate limit exceeded",
+                                "request_id": request_id,
+                            },
+                            headers={
+                                "Retry-After": str(
+                                    max(1, result.retry_after_seconds)
+                                )
+                            },
+                        )
+                    return await call_next(request)
+                except SharedRateLimitError as exc:
+                    logger.warning(
+                        "shared_rate_limit_fallback reason=%s",
+                        exc,
+                    )
+
         now = time.monotonic()
         cutoff = now - self.window_seconds
 

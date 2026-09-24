@@ -28,6 +28,7 @@ class APISettings:
     allow_credentials: bool
     rate_limit_requests: int
     rate_limit_window_seconds: int
+    shared_rate_limit_enabled: bool
 
     @property
     def production(self) -> bool:
@@ -62,6 +63,10 @@ def load_settings() -> APISettings:
         allow_credentials=_bool("MARKET_FORECASTER_ALLOW_CREDENTIALS", False),
         rate_limit_requests=max(1, _int("MARKET_FORECASTER_RATE_LIMIT_REQUESTS", 30)),
         rate_limit_window_seconds=max(1, _int("MARKET_FORECASTER_RATE_LIMIT_WINDOW_SECONDS", 60)),
+        shared_rate_limit_enabled=_bool(
+            "MARKET_FORECASTER_SHARED_RATE_LIMIT_ENABLED",
+            False,
+        ),
     )
     settings.validate()
     return settings
