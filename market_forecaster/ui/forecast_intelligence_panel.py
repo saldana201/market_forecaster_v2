@@ -6,6 +6,7 @@ import json
 import pandas as pd
 import streamlit as st
 
+from market_forecaster.config import SHARED_AUTHORITY_ENABLED
 from market_forecaster.core.cross_ticker_validation import validate_authority_across_tickers
 from market_forecaster.core.forecast_authority import (
     AUTHORITY_SCHEMA_VERSION,
@@ -17,6 +18,9 @@ from market_forecaster.core.forecast_contract import build_forecast_contract
 from market_forecaster.core.market_context import ALL_CONTEXT_FAMILIES, FAMILY_DESCRIPTIONS
 from market_forecaster.core.model_tournament import model_registry
 from market_forecaster.core.research_snapshots import list_contract_snapshots
+from market_forecaster.services.shared_authority_store import (
+    shared_authority_write_configuration_status,
+)
 
 
 def _available_authority_models() -> list[str]:
@@ -122,7 +126,23 @@ def render_forecast_intelligence_panel(current_ticker: str) -> None:
                 "enabled": enabled,
             }
 
-    if st.button("Save Forecast Authority", key="save_forecast_authority"):
+    authority_write_allowed = True
+    authority_write_reason = ""
+    if SHARED_AUTHORITY_ENABLED:
+        authority_write_allowed, authority_write_reason = (
+            shared_authority_write_configuration_status()
+        )
+        if not authority_write_allowed:
+            st.caption(
+                "Production Forecast Authority is shared and read-only in this app session. "
+                "Publish changes from a trusted admin environment."
+            )
+
+    if st.button(
+        "Save Forecast Authority",
+        key="save_forecast_authority",
+        disabled=not authority_write_allowed,
+    ):
         try:
             saved = save_authority_config(edited)
             st.success(
