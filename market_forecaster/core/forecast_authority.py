@@ -143,33 +143,43 @@ def load_authority_config(
     require_available_models: bool = False,
 ) -> dict:
     shared_warning = None
-    config = None
 
     # Explicit repo_root calls are intentionally local-only for tests/offline
     # research. Production calls use the shared authority first when enabled.
     if repo_root is None and SHARED_AUTHORITY_ENABLED:
         try:
-            config = load_shared_authority()
+            shared_config = load_shared_authority()
+            if isinstance(shared_config, dict):
+                shared_check = validate_authority_config(
+                    shared_config,
+                    require_available_models=require_available_models,
+                )
+                if shared_check["status"] == "PASS":
+                    return shared_check["config"]
+                shared_warning = (
+                    "Invalid shared Forecast Authority: "
+                    + "; ".join(shared_check["errors"])
+                )
+            else:
+                shared_warning = "Shared Forecast Authority row is missing."
         except SharedAuthorityStoreError as exc:
             shared_warning = str(exc)
 
-    if not isinstance(config, dict):
-        config = _load_local_authority(repo_root)
-
-    check = validate_authority_config(
-        config,
+    local_config = _load_local_authority(repo_root)
+    local_check = validate_authority_config(
+        local_config,
         require_available_models=require_available_models,
     )
-    if check["status"] == "FAIL":
-        # Invalid persisted/shared authority must never silently become active.
+    if local_check["status"] == "FAIL":
+        # Invalid local fallback must never silently become active.
         fallback = default_authority_config()
-        warnings = list(check["errors"])
+        warnings = list(local_check["errors"])
         if shared_warning:
             warnings.insert(0, shared_warning)
         fallback["load_warning"] = "; ".join(warnings)
         return fallback
 
-    result = check["config"]
+    result = local_check["config"]
     if shared_warning:
         result["load_warning"] = (
             "Shared Forecast Authority unavailable; local fallback is active: "
