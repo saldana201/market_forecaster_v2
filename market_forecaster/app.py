@@ -18,8 +18,8 @@ import streamlit as st
 from datetime import timedelta
 
 from market_forecaster.config import (
-    __version__, BRAND, DISCLAIMER, DEMO_MODE_ENABLED, MULTI_USER_ENABLED,
-    SUBSCRIPTIONS_ENABLED, ForecastRequest,
+    __version__, BRAND, DISCLAIMER, DATABASE_PERSISTENCE_ENABLED,
+    DEMO_MODE_ENABLED, MULTI_USER_ENABLED, SUBSCRIPTIONS_ENABLED, ForecastRequest,
 )
 from market_forecaster.ui.sidebar import render_sidebar
 from market_forecaster.ui.components import (
@@ -47,6 +47,7 @@ from market_forecaster.ui.feature_ablation_panel import render_feature_ablation_
 from market_forecaster.ui.uncertainty_panel import render_uncertainty_panel
 from market_forecaster.ui.forecast_intelligence_panel import render_forecast_intelligence_panel
 from market_forecaster.ui.forecast_dashboard import render_forecast_dashboard
+from market_forecaster.ui.forecast_history import render_forecast_history
 from market_forecaster.ui.research_workspace import render_research_workspace
 from market_forecaster.ui.system_health_workspace import render_system_health_workspace
 from market_forecaster.ui.advanced_tools_panel import render_advanced_tools_panel
@@ -84,7 +85,9 @@ from market_forecaster.core.entitlements import can_view_research_lab
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
 from market_forecaster.auth.provider import AuthProviderError, InvalidToken
 from market_forecaster.auth.session import sync_authenticated_identity
+from market_forecaster.persistence.supabase_data import PersistenceError
 from market_forecaster.services.subscriptions import sync_subscription_identity
+from market_forecaster.services.user_data import hydrate_user_preferences
 
 # AutoTune
 from market_forecaster.autotune.tuner import run_autotune
@@ -117,6 +120,16 @@ if SUBSCRIPTIONS_ENABLED:
             st.session_state["auth_notice"] = (
                 "Subscription status is temporarily unavailable. Paid features are locked until it can be verified."
             )
+
+if DATABASE_PERSISTENCE_ENABLED:
+    current_identity = resolve_identity(st.session_state)
+    if current_identity.authenticated:
+        try:
+            hydrate_user_preferences(st.session_state, current_identity)
+        except PersistenceError:
+            # Preferences are non-critical; keep the main forecast workspace
+            # available if the persistence service is temporarily unavailable.
+            pass
 
 req = render_sidebar()
 identity = resolve_identity(st.session_state)
@@ -217,10 +230,11 @@ st.write(
 if is_analyst():
     model_availability_badges()
 
-tab_forecast, tab_watchlist, tab_portfolio, tab_account, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
+tab_forecast, tab_watchlist, tab_portfolio, tab_history, tab_account, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
     "🔮 Forecast",
     "★ Watchlist",
     "▣ Portfolio",
+    "↺ History",
     "◎ Account",
     "🧪 Research Lab",
     "🩺 System Health",
@@ -242,6 +256,9 @@ with tab_watchlist:
 
 with tab_portfolio:
     render_persistent_portfolio()
+
+with tab_history:
+    render_forecast_history()
 
 with tab_account:
     render_account_screen()
