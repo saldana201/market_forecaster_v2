@@ -9,6 +9,8 @@ from market_forecaster.services.subscriptions import (
     create_checkout_url,
     create_portal_url,
     load_subscription,
+    normalize_requested_plan,
+    requested_plan_is_satisfied,
     subscription_configuration_status,
 )
 
@@ -28,6 +30,113 @@ def _status_label(status: str) -> str:
         "bootstrap": "Account access",
     }
     return mapping.get(str(status or "").lower(), str(status or "Unknown").title())
+
+
+
+def capture_billing_return() -> None:
+    """Consume Stripe return query state once and convert it to session UI state."""
+    try:
+        raw = st.query_params.get("billing")
+    except Exception:
+        return
+
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    result = str(raw or "").strip().lower()
+    if result not in {"success", "cancel"}:
+        return
+
+    st.session_state["billing_return_notice"] = result
+    st.session_state.pop("billing_checkout_url", None)
+    st.session_state.pop("billing_checkout_plan", None)
+
+    try:
+        del st.query_params["billing"]
+    except Exception:
+        pass
+
+
+def render_billing_return_notice() -> None:
+    result = st.session_state.pop("billing_return_notice", None)
+    if result == "success":
+        st.success(
+            "Stripe Checkout returned successfully. Subscription status may take a few seconds "
+            "to synchronize from the signed webhook."
+        )
+    elif result == "cancel":
+        st.info("Stripe Checkout was canceled. No subscription change was made.")
+
+
+def render_upgrade_handoff() -> None:
+    """Keep a Demo plan choice visible after the user authenticates."""
+    identity = resolve_identity(st.session_state)
+    if not identity.authenticated:
+        return
+
+    requested = normalize_requested_plan(st.session_state.get("requested_plan"))
+    if requested is None:
+        return
+
+    if requested_plan_is_satisfied(identity, requested):
+        st.session_state.pop("requested_plan", None)
+        st.session_state.pop("billing_checkout_url", None)
+        st.session_state.pop("billing_checkout_plan", None)
+        st.success(f"{identity.plan.title()} access is active on this account.")
+        return
+
+    ready, reason = subscription_configuration_status()
+
+    with st.container(border=True):
+        st.markdown(f"### Continue your {requested.title()} upgrade")
+        st.caption(
+            "Your plan selection carried over from the Demo. Account verification is complete; "
+            "the next step is secure Stripe Checkout."
+        )
+
+        if not ready:
+            st.info(
+                "Your upgrade choice is saved for this session, but billing is not active on this "
+                f"deployment yet. {reason}"
+            )
+            return
+
+        if st.session_state.get("billing_checkout_plan") != requested:
+            st.session_state.pop("billing_checkout_url", None)
+            st.session_state["billing_checkout_plan"] = requested
+
+        if st.button(
+            f"Prepare {requested.title()} Checkout",
+            key=f"prepare_requested_{requested}_checkout",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                st.session_state["billing_checkout_url"] = create_checkout_url(
+                    st.session_state,
+                    identity,
+                    requested,
+                )
+            except BillingError as exc:
+                st.error(str(exc))
+
+        checkout_url = st.session_state.get("billing_checkout_url")
+        if checkout_url:
+            st.link_button(
+                f"Continue to Stripe for {requested.title()}",
+                str(checkout_url),
+                type="primary",
+                use_container_width=True,
+            )
+
+        if st.button(
+            "Clear upgrade choice",
+            key="clear_requested_plan",
+            use_container_width=True,
+        ):
+            st.session_state.pop("requested_plan", None)
+            st.session_state.pop("billing_checkout_url", None)
+            st.session_state.pop("billing_checkout_plan", None)
+            st.rerun()
 
 
 def render_billing_panel() -> None:
