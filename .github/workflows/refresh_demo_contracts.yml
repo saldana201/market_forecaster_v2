@@ -51,4 +51,4 @@ jobs:
       - name: Verify shared Demo cache
         if: steps.shared-secrets.outputs.configured == 'true'
         run: |
-          python -m market_forecaster.scripts.check_demo_cache --fail-if-incomplete --compact
+          python -m market_forecaster.scripts.check_demo_cache --fail-if-incomplete --require-shared --compact
