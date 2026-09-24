@@ -23,8 +23,8 @@ def test_shared_rate_limit_hashes_client_identifier_before_rpc(monkeypatch):
         "https://example.supabase.co",
     )
     monkeypatch.setenv(
-        "MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY",
-        "sb_publishable_test",
+        "MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY",
+        "service-role-test",
     )
     monkeypatch.setenv(
         "MARKET_FORECASTER_RATE_LIMIT_HASH_SECRET",
@@ -50,6 +50,8 @@ def test_shared_rate_limit_hashes_client_identifier_before_rpc(monkeypatch):
     def fake_urlopen(req, timeout):
         captured["body"] = json.loads(req.data.decode("utf-8"))
         captured["url"] = req.full_url
+        captured["apikey"] = req.headers["Apikey"]
+        captured["authorization"] = req.headers["Authorization"]
         return FakeResponse()
 
     monkeypatch.setattr(
@@ -74,6 +76,8 @@ def test_shared_rate_limit_hashes_client_identifier_before_rpc(monkeypatch):
     assert result.allowed is True
     assert captured["body"]["p_bucket_key"] == expected
     assert raw_client not in json.dumps(captured["body"])
+    assert captured["apikey"] == "service-role-test"
+    assert captured["authorization"] == "Bearer service-role-test"
     assert "consume_market_forecaster_rate_limit" in captured["url"]
 
 
