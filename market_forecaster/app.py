@@ -81,7 +81,7 @@ from market_forecaster.core.signals import compute_basic_signal, compute_integra
 from market_forecaster.core.options_flow_v2 import fetch_options_flow_v2, persist_options_snapshot
 from market_forecaster.core.operations import record_operation_event
 from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
-from market_forecaster.core.entitlements import can_view_research_lab
+from market_forecaster.core.entitlements import can_view_research_lab, entitlements_for
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
 from market_forecaster.auth.provider import AuthProviderError, InvalidToken
 from market_forecaster.auth.session import sync_authenticated_identity
@@ -134,6 +134,10 @@ if DATABASE_PERSISTENCE_ENABLED:
 req = render_sidebar()
 identity = resolve_identity(st.session_state)
 is_demo = DEMO_MODE_ENABLED and not identity.authenticated
+advanced_allowed = (
+    not MULTI_USER_ENABLED
+    or entitlements_for(identity).expensive_refreshes_per_day > 0
+)
 
 # ===================================================================
 # Product shell
@@ -275,17 +279,23 @@ with tab_health:
 
 with tab_advanced:
     st.header("Advanced / Legacy Tools")
-    st.caption(
-        "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
-        "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
-    )
-    render_advanced_tools_panel(req.ticker)
+    if advanced_allowed:
+        st.caption(
+            "Older Prophet, ensemble, seasonal, sentiment, pattern, ranking, and portfolio tools remain here for comparison and compatibility. "
+            "They do not replace the canonical 4.0 Forecast Contract shown on the Forecast page."
+        )
+        render_advanced_tools_panel(req.ticker)
+    else:
+        st.info(
+            "Advanced model runs require Standard or Pro. "
+            "Demo accounts use the shared cached Forecast Contracts."
+        )
 
 
 # ===================================================================
 # AutoTune handler (runs before forecast if triggered)
 # ===================================================================
-if st.session_state.pop("run_autotune", False):
+if st.session_state.pop("run_autotune", False) and advanced_allowed:
     with tab_advanced:
         st.subheader(f"🔧 AutoTune for {req.ticker}")
         result = run_autotune(req, st.session_state.get("autotune_budget", "Balanced (24)"))
@@ -326,7 +336,11 @@ if st.session_state.pop("run_autotune", False):
 # Advanced legacy forecast workflow
 # ===================================================================
 with tab_advanced:
-    if st.button("🚀 Run Forecast", type="primary", use_container_width=True):
+    if advanced_allowed and st.button(
+        "🚀 Run Forecast",
+        type="primary",
+        use_container_width=True,
+    ):
         st.header(f"📈 {req.ticker}")
 
         # ---- Data ----
