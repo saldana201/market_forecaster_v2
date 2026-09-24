@@ -30,6 +30,7 @@ SUBSCRIPTIONS_ENABLED = _env_flag("SUBSCRIPTIONS_ENABLED", False)
 PRO_RESEARCH_ENABLED = _env_flag("PRO_RESEARCH_ENABLED", False)
 PUBLIC_DEMO_API_ENABLED = _env_flag("PUBLIC_DEMO_API_ENABLED", True)
 SHARED_CONTRACT_STORAGE_ENABLED = _env_flag("SHARED_CONTRACT_STORAGE_ENABLED", False)
+SHARED_AUTHORITY_ENABLED = _env_flag("SHARED_AUTHORITY_ENABLED", False)
 
 # -------------------------------------------------------------------
 # Guardrails

@@ -96,7 +96,8 @@ jobs:
             --settings \
               SCM_DO_BUILD_DURING_DEPLOYMENT=true \
               ENABLE_ORYX_BUILD=true \
-              SHARED_CONTRACT_STORAGE_ENABLED=true
+              SHARED_CONTRACT_STORAGE_ENABLED=true \
+              SHARED_AUTHORITY_ENABLED=true
 
           # Market Forecaster is a Streamlit app, not a Flask/Django app.
           # Use python -m so the package installed by Oryx is resolved from

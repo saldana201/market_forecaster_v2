@@ -34,6 +34,8 @@ async def update_forecast_authority(config: dict[str, Any] = Body(...)):
     try:
         saved = save_authority_config(config)
         return {"status": "saved", "config": saved}
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
