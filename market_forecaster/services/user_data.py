@@ -273,3 +273,148 @@ def ensure_account_foundation(
     profile = raw_profile if isinstance(raw_profile, dict) else {}
     stored_profile = ensure_profile(client, identity, profile)
     return client, stored_profile
+
+
+
+def save_forecast_history(
+    client: SupabaseDataClient,
+    identity: AppIdentity,
+    contract: dict,
+) -> dict:
+    """Persist one canonical Forecast Contract per user/contract ID."""
+    user_id = verified_owner_id(identity)
+    ticker = str(contract.get("ticker") or "").upper().strip()
+    contract_id = str(contract.get("contract_id") or "").strip()
+    if not ticker or not contract_id:
+        raise PersistenceError("Forecast Contract ticker and contract_id are required.")
+
+    rows = client.insert(
+        "saved_forecasts",
+        {
+            "user_id": user_id,
+            "ticker": ticker,
+            "contract_id": contract_id,
+            "contract_version": str(contract.get("schema_version") or ""),
+            "generated_at": contract.get("generated_at"),
+            "forecast_contract": contract,
+        },
+        upsert=True,
+        on_conflict="user_id,contract_id",
+    )
+    return rows[0] if rows else {
+        "user_id": user_id,
+        "ticker": ticker,
+        "contract_id": contract_id,
+    }
+
+
+def list_saved_forecasts(
+    client: SupabaseDataClient,
+    identity: AppIdentity,
+    *,
+    ticker: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    user_id = verified_owner_id(identity)
+    filters = {"user_id": f"eq.{user_id}"}
+    symbol = str(ticker or "").upper().strip()
+    if symbol:
+        filters["ticker"] = f"eq.{symbol}"
+    return client.select(
+        "saved_forecasts",
+        filters=filters,
+        order="created_at.desc",
+        limit=max(1, min(int(limit), 200)),
+    )
+
+
+def delete_saved_forecast(
+    client: SupabaseDataClient,
+    identity: AppIdentity,
+    saved_id: str,
+) -> None:
+    user_id = verified_owner_id(identity)
+    client.delete(
+        "saved_forecasts",
+        filters={
+            "id": f"eq.{str(saved_id).strip()}",
+            "user_id": f"eq.{user_id}",
+        },
+    )
+
+
+def load_user_preferences(
+    client: SupabaseDataClient,
+    identity: AppIdentity,
+) -> dict:
+    user_id = verified_owner_id(identity)
+    rows = client.select(
+        "user_preferences",
+        filters={"user_id": f"eq.{user_id}"},
+        limit=1,
+    )
+    if rows:
+        return rows[0]
+    return {
+        "user_id": user_id,
+        "default_ticker": None,
+        "timezone": "America/Chicago",
+        "settings": {},
+    }
+
+
+def save_user_preferences(
+    client: SupabaseDataClient,
+    identity: AppIdentity,
+    *,
+    default_ticker: str | None,
+    timezone: str,
+    settings: dict | None = None,
+) -> dict:
+    user_id = verified_owner_id(identity)
+    ticker = str(default_ticker or "").upper().strip() or None
+    if ticker is not None and len(ticker) > 20:
+        raise PersistenceError("Default ticker is too long.")
+    timezone_value = str(timezone or "America/Chicago").strip() or "America/Chicago"
+    rows = client.insert(
+        "user_preferences",
+        {
+            "user_id": user_id,
+            "default_ticker": ticker,
+            "timezone": timezone_value,
+            "settings": settings if isinstance(settings, dict) else {},
+        },
+        upsert=True,
+        on_conflict="user_id",
+    )
+    return rows[0] if rows else {
+        "user_id": user_id,
+        "default_ticker": ticker,
+        "timezone": timezone_value,
+        "settings": settings if isinstance(settings, dict) else {},
+    }
+
+
+def hydrate_user_preferences(
+    state: MutableMapping,
+    identity: AppIdentity,
+) -> dict | None:
+    """Load account preferences once per authenticated user/session."""
+    if not identity.authenticated:
+        return None
+
+    user_id = verified_owner_id(identity)
+    if state.get("_preferences_loaded_for") == user_id:
+        cached = state.get("user_preferences")
+        return cached if isinstance(cached, dict) else None
+
+    client = client_for_state(state, identity)
+    preferences = load_user_preferences(client, identity)
+    state["_preferences_loaded_for"] = user_id
+    state["user_preferences"] = preferences
+
+    default_ticker = str(preferences.get("default_ticker") or "").upper().strip()
+    if default_ticker:
+        state["ticker"] = default_ticker
+
+    return preferences
