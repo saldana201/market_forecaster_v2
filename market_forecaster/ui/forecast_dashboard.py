@@ -8,11 +8,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from market_forecaster.config import DEMO_MODE_ENABLED
+from market_forecaster.core.entitlements import can_save_forecast_history
 from market_forecaster.core.forecast_authority import load_authority_config
 from market_forecaster.core.forecast_contract import build_forecast_contract
 from market_forecaster.core.research_snapshots import load_latest_contract
 from market_forecaster.core.session_identity import resolve_identity
+from market_forecaster.persistence.supabase_data import PersistenceError
 from market_forecaster.services.forecast_access import ForecastAccessError, load_demo_forecast
+from market_forecaster.services.user_data import client_for_state, save_forecast_history
 
 
 def _number(value):
@@ -304,6 +307,28 @@ def render_forecast_dashboard(current_ticker: str) -> None:
         st.metric("Chance of Finishing Higher", _percent(anchor.get("probability_up_pct")) if anchor else "—")
     with h4:
         st.metric("Forecast Evidence", evidence_quality(anchor))
+
+    if identity.authenticated and can_save_forecast_history(identity):
+        with st.container(border=True):
+            save_col, note_col = st.columns([1, 2.2])
+            with save_col:
+                if st.button(
+                    "Save Forecast to History",
+                    key=f"save_forecast_history_{ticker}_{contract.get('contract_id', '')}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    try:
+                        client = client_for_state(st.session_state, identity)
+                        save_forecast_history(client, identity, contract)
+                        st.success("Forecast Contract saved to your account history.")
+                    except PersistenceError as exc:
+                        st.error(f"Could not save forecast history: {exc}")
+            with note_col:
+                st.caption(
+                    "History stores this exact canonical Forecast Contract. Saving the same "
+                    "contract again updates the existing history item rather than creating a duplicate."
+                )
 
     st.markdown("### Future Price Outlook")
     table = _forecast_table(contract)
