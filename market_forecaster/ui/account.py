@@ -20,6 +20,7 @@ from market_forecaster.services.user_data import (
     ensure_account_foundation,
     persistence_configuration_status,
 )
+from market_forecaster.ui.billing import render_billing_panel
 
 
 def _login_form() -> None:
@@ -178,6 +179,8 @@ def _signed_in_account() -> None:
             "The internal user ID is derived from the verified provider identity. "
             "Browser requests cannot choose or override this ID."
         )
+
+    render_billing_panel()
 
     if st.button("Sign out", key="account_logout", use_container_width=True):
         auth = st.session_state.get(AUTH_SESSION_KEY) or {}
