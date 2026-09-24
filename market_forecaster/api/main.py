@@ -38,9 +38,16 @@ from market_forecaster.api.routes import public_demo as public_demo_routes
 from market_forecaster.api.routes import account as account_routes
 from market_forecaster.api.security import require_api_key
 from market_forecaster.api.settings import load_settings
-from market_forecaster.config import DISCLAIMER, MULTI_USER_ENABLED, PUBLIC_DEMO_API_ENABLED, __version__
+from market_forecaster.config import (
+    DISCLAIMER,
+    MULTI_USER_ENABLED,
+    PUBLIC_DEMO_API_ENABLED,
+    SHARED_CONTRACT_STORAGE_ENABLED,
+    __version__,
+)
 from market_forecaster.core.ensemble import ARIMA_AVAILABLE, LSTM_AVAILABLE
 from market_forecaster.core.xgb_multihorizon import XGBOOST_AVAILABLE
+from market_forecaster.services.shared_contract_store import shared_read_configuration_status
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -126,12 +133,21 @@ async def health():
 @app.get("/api/v1/ready")
 async def ready():
     # Import/config validation happens at module import. Report optional model state here.
+    shared_ready, shared_reason = shared_read_configuration_status()
     return {
         "status": "ready",
         "version": __version__,
         "environment": settings.environment,
         "auth_enabled": settings.auth_enabled,
         "multi_user_enabled": MULTI_USER_ENABLED,
+        "shared_contract_storage": {
+            "enabled": SHARED_CONTRACT_STORAGE_ENABLED,
+            "configured": shared_ready,
+            "status": "shared" if shared_ready else (
+                "local_fallback" if SHARED_CONTRACT_STORAGE_ENABLED else "disabled"
+            ),
+            "reason": None if shared_ready else shared_reason,
+        },
         "models_available": {
             "prophet": True,
             "arima": ARIMA_AVAILABLE,
