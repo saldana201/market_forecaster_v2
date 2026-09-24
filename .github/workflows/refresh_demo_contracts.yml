@@ -2,6 +2,12 @@ name: Refresh shared Demo Forecast Contracts
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/refresh_demo_contracts.yml'
+      - 'supabase/functions/publish-demo-contracts/**'
   schedule:
     # After U.S. market close, Tuesday-Saturday UTC (covers Monday-Friday sessions).
     - cron: '30 0 * * 2-6'
