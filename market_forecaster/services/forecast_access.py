@@ -35,19 +35,34 @@ class ForecastAccessResult:
 
 
 
+def _generated_timestamp(contract: dict | None) -> float:
+    if not contract:
+        return 0.0
+    try:
+        stamp = datetime.fromisoformat(
+            str(contract.get("generated_at") or "").replace("Z", "+00:00")
+        )
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.astimezone(timezone.utc).timestamp()
+    except Exception:
+        return 0.0
+
+
 def _load_best_contract(ticker: str, *, repo_root=None) -> tuple[dict | None, str]:
     symbol = str(ticker or "").upper().strip()
+    local = load_latest_contract(symbol, repo_root=repo_root)
+
     if SHARED_CONTRACT_STORAGE_ENABLED:
         try:
             shared = load_shared_contract(symbol)
-            if shared:
+            if shared and _generated_timestamp(shared) >= _generated_timestamp(local):
                 return shared, "shared_supabase"
         except SharedContractStoreError:
             # Production remains readable if the shared store has a transient
             # outage and a deployment-local contract is available.
             pass
 
-    local = load_latest_contract(symbol, repo_root=repo_root)
     return local, "local_cache" if local else "unavailable"
 
 
@@ -100,10 +115,14 @@ def demo_cache_status(*, repo_root=None) -> list[dict]:
 
     rows: list[dict] = []
     for symbol in symbols:
-        contract = shared_contracts.get(symbol.ticker)
-        source = "shared_supabase" if contract else "local_cache"
-        if not contract:
-            contract = load_latest_contract(symbol.ticker, repo_root=repo_root)
+        shared = shared_contracts.get(symbol.ticker)
+        local = load_latest_contract(symbol.ticker, repo_root=repo_root)
+        if shared and _generated_timestamp(shared) >= _generated_timestamp(local):
+            contract = shared
+            source = "shared_supabase"
+        else:
+            contract = local
+            source = "local_cache"
         generated_at = contract.get("generated_at") if contract else None
         age_hours = None
         if generated_at:
