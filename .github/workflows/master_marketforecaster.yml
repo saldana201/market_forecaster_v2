@@ -114,6 +114,7 @@ jobs:
             --name marketforecaster \
             --query defaultHostName -o tsv)"
           echo "APP_HOST=$APP_HOST" >> "$GITHUB_ENV"
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> "$GITHUB_ENV"
 
       - name: Wait for App Service configuration restart to settle
         shell: bash
@@ -139,4 +140,38 @@ jobs:
             --max-time 20 \
             "https://$APP_HOST/" > /dev/null
           echo "Market Forecaster is responding successfully."
+
+      - name: Capture Azure diagnostics on deployment failure
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p azure-diagnostics
+
+          az webapp show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            > azure-diagnostics/webapp.json || true
+
+          az webapp config show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            > azure-diagnostics/webapp-config.json || true
+
+          timeout 30s az webapp log tail \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            > azure-diagnostics/live-log.txt 2>&1 || true
+
+          echo "Azure diagnostics captured without exporting application settings/secrets."
+
+      - name: Upload Azure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-deployment-diagnostics-${{ github.run_id }}
+          path: azure-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
           
