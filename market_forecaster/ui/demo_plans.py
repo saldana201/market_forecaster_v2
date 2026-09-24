@@ -34,7 +34,10 @@ def _plan_card(
 
 def _go_to_account(plan: str) -> None:
     st.session_state["requested_plan"] = plan
-    st.session_state["demo_navigation"] = "◎ Account"
+    # Do not mutate the segmented-control key after the widget has been
+    # instantiated on this run. Hand the destination to app.py and apply it
+    # before the navigation widget is created on the next rerun.
+    st.session_state["demo_navigation_pending"] = "◎ Account"
     st.rerun()
 
 
