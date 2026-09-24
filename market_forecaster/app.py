@@ -56,6 +56,11 @@ from market_forecaster.ui.demo_portfolio import render_demo_portfolio
 from market_forecaster.ui.demo_plans import render_demo_plans
 from market_forecaster.ui.demo_theme import inject_demo_theme
 from market_forecaster.ui.account import render_account_screen
+from market_forecaster.ui.billing import (
+    capture_billing_return,
+    render_billing_return_notice,
+    render_upgrade_handoff,
+)
 from market_forecaster.ui.user_data_workspace import (
     render_persistent_watchlist,
     render_persistent_portfolio,
@@ -88,6 +93,7 @@ from market_forecaster.autotune.tuner import run_autotune
 # Page config
 # ===================================================================
 st.set_page_config(page_title=f"{BRAND} — Market Forecaster", layout="wide")
+capture_billing_return()
 
 # ===================================================================
 # Sidebar → returns a validated ForecastRequest
@@ -199,6 +205,9 @@ persistent account data, advanced research tools and API access.
 # ===================================================================
 # Internal / future authenticated workspace
 # ===================================================================
+render_billing_return_notice()
+render_upgrade_handoff()
+
 st.title("📊 Market Forecaster")
 st.write(
     "Clear multi-horizon market forecasts first. Research, system diagnostics, "

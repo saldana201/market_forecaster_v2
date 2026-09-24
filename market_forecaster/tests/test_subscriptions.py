@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 
 from market_forecaster.billing.stripe_client import StripeBillingClient
-from market_forecaster.services.subscriptions import effective_plan
+from market_forecaster.core.session_identity import AppIdentity
+from market_forecaster.services.subscriptions import (
+    effective_plan,
+    normalize_requested_plan,
+    requested_plan_is_satisfied,
+)
 
 
 def test_effective_plan_requires_entitled_status():
@@ -77,3 +82,30 @@ def test_checkout_session_carries_verified_user_and_plan_metadata(monkeypatch):
     assert "metadata%5Bplan%5D=pro" in captured["body"]
     assert "subscription_data%5Bmetadata%5D%5Buser_id%5D=" in captured["body"]
     assert "line_items%5B0%5D%5Bprice%5D=price_pro" in captured["body"]
+
+
+
+def _identity(plan: str, status: str) -> AppIdentity:
+    return AppIdentity(
+        user_id="internal-user",
+        session_id="session",
+        authenticated=True,
+        plan=plan,
+        subscription_status=status,
+        is_admin=False,
+        auth_provider="supabase",
+        auth_subject="11111111-1111-4111-8111-111111111111",
+    )
+
+
+def test_requested_plan_normalization_and_satisfaction():
+    assert normalize_requested_plan("STANDARD") == "standard"
+    assert normalize_requested_plan(" pro ") == "pro"
+    assert normalize_requested_plan("demo") is None
+    assert normalize_requested_plan("anything") is None
+
+    assert requested_plan_is_satisfied(_identity("standard", "active"), "standard") is True
+    assert requested_plan_is_satisfied(_identity("pro", "active"), "standard") is True
+    assert requested_plan_is_satisfied(_identity("standard", "active"), "pro") is False
+    assert requested_plan_is_satisfied(_identity("pro", "canceled"), "pro") is False
+    assert requested_plan_is_satisfied(_identity("demo", "none"), None) is True

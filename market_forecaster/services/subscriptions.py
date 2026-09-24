@@ -15,6 +15,7 @@ from market_forecaster.services.user_data import client_for_state, verified_owne
 
 ENTITLED_STATUSES = {"trialing", "active", "past_due"}
 PAID_PLANS = {"standard", "pro"}
+PLAN_RANK = {"demo": 0, "standard": 1, "pro": 2}
 
 
 def _public_url() -> str:
@@ -64,6 +65,11 @@ def load_subscription(
     return rows[0] if rows else None
 
 
+def normalize_requested_plan(value: object) -> str | None:
+    plan = str(value or "").strip().lower()
+    return plan if plan in PAID_PLANS else None
+
+
 def effective_plan(subscription: dict | None) -> tuple[str, str]:
     if not subscription:
         return "demo", "none"
@@ -72,6 +78,15 @@ def effective_plan(subscription: dict | None) -> tuple[str, str]:
     if status in ENTITLED_STATUSES and plan in PAID_PLANS:
         return plan, status
     return "demo", status
+
+
+def requested_plan_is_satisfied(identity: AppIdentity, requested_plan: object) -> bool:
+    requested = normalize_requested_plan(requested_plan)
+    if requested is None:
+        return True
+    if identity.subscription_status not in ENTITLED_STATUSES:
+        return False
+    return PLAN_RANK.get(identity.plan, 0) >= PLAN_RANK[requested]
 
 
 def sync_subscription_identity(
