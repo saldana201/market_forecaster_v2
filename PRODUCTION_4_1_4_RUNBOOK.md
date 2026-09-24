@@ -102,11 +102,15 @@ FastAPI supports a shared fixed-window limiter backed by the private Supabase
 `api_rate_limit_buckets` table and the
 `consume_market_forecaster_rate_limit` RPC.
 
-For the API host, configure:
+For the trusted API host, configure:
 
     MARKET_FORECASTER_SHARED_RATE_LIMIT_ENABLED=true
     MARKET_FORECASTER_RATE_LIMIT_REQUESTS=30
     MARKET_FORECASTER_RATE_LIMIT_WINDOW_SECONDS=60
+    MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY=<server-only secret>
+
+The rate-limit RPC is executable only by the Supabase service role. Do not expose
+that key to browser code or the public Demo frontend.
 
 The limiter derives an HMAC bucket from the client identifier. Raw client IPs are
 not persisted in Supabase. The HMAC secret comes from
