@@ -59,7 +59,7 @@ async function verifyGitHubOidc(req: Request): Promise<Claims> {
   if (!workflowRef.startsWith(EXPECTED_WORKFLOW)) {
     throw new Error("unexpected GitHub workflow");
   }
-  if (!["schedule", "workflow_dispatch"].includes(eventName)) {
+  if (!["schedule", "workflow_dispatch", "push"].includes(eventName)) {
     throw new Error("unexpected GitHub event");
   }
 
