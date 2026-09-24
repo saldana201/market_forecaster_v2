@@ -28,12 +28,10 @@ def _supabase_url() -> str:
     ).strip().rstrip("/")
 
 
-def _publishable_key() -> str:
+def _service_role_key() -> str:
     return str(
-        os.getenv("MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY")
-        or os.getenv("SUPABASE_PUBLISHABLE_KEY")
-        or os.getenv("MARKET_FORECASTER_SUPABASE_ANON_KEY")
-        or os.getenv("SUPABASE_ANON_KEY")
+        os.getenv("MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         or ""
     ).strip()
 
@@ -51,8 +49,8 @@ def shared_rate_limit_configuration_status(enabled: bool) -> tuple[bool, str]:
         return False, "Shared API rate limiting is disabled."
     if not _supabase_url():
         return False, "Supabase URL is not configured."
-    if not _publishable_key():
-        return False, "Supabase publishable key is not configured."
+    if not _service_role_key():
+        return False, "Supabase service-role key is not configured on the API host."
     if not _hash_secret():
         return False, "Rate-limit hash secret/API key is not configured."
     return True, "ready"
@@ -101,12 +99,14 @@ class SharedRateLimiter:
                 "p_window_seconds": self.window_seconds,
             }
         ).encode("utf-8")
+        service_key = _service_role_key()
         req = request.Request(
             endpoint,
             data=payload,
             method="POST",
             headers={
-                "apikey": _publishable_key(),
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
