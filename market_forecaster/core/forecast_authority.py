@@ -12,12 +12,19 @@ import tempfile
 from copy import deepcopy
 from pathlib import Path
 
+from market_forecaster.config import SHARED_AUTHORITY_ENABLED
 from market_forecaster.core.model_tournament import (
     is_model_available,
     model_status_map,
 )
 from market_forecaster.core.market_context import ALL_CONTEXT_FAMILIES
 from market_forecaster.core.targets import DEFAULT_RESEARCH_HORIZONS
+from market_forecaster.services.shared_authority_store import (
+    SharedAuthorityStoreError,
+    load_shared_authority,
+    publish_shared_authority,
+    shared_authority_write_configuration_status,
+)
 
 AUTHORITY_SCHEMA_VERSION = "4.0-authority-v1"
 AUTHORITY_FILENAME = "forecast_authority.json"
@@ -120,30 +127,55 @@ def validate_authority_config(config: dict, *, require_available_models: bool = 
     }
 
 
+def _load_local_authority(repo_root: str | Path | None = None) -> dict:
+    path = authority_path(repo_root)
+    if not path.exists():
+        return default_authority_config()
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default_authority_config()
+
+
 def load_authority_config(
     *,
     repo_root: str | Path | None = None,
     require_available_models: bool = False,
 ) -> dict:
-    path = authority_path(repo_root)
-    if not path.exists():
-        config = default_authority_config()
-    else:
+    shared_warning = None
+    config = None
+
+    # Explicit repo_root calls are intentionally local-only for tests/offline
+    # research. Production calls use the shared authority first when enabled.
+    if repo_root is None and SHARED_AUTHORITY_ENABLED:
         try:
-            config = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            config = default_authority_config()
+            config = load_shared_authority()
+        except SharedAuthorityStoreError as exc:
+            shared_warning = str(exc)
+
+    if not isinstance(config, dict):
+        config = _load_local_authority(repo_root)
 
     check = validate_authority_config(
         config,
         require_available_models=require_available_models,
     )
     if check["status"] == "FAIL":
-        # Invalid persisted authority must not silently become active.
+        # Invalid persisted/shared authority must never silently become active.
         fallback = default_authority_config()
-        fallback["load_warning"] = "; ".join(check["errors"])
+        warnings = list(check["errors"])
+        if shared_warning:
+            warnings.insert(0, shared_warning)
+        fallback["load_warning"] = "; ".join(warnings)
         return fallback
-    return check["config"]
+
+    result = check["config"]
+    if shared_warning:
+        result["load_warning"] = (
+            "Shared Forecast Authority unavailable; local fallback is active: "
+            + shared_warning
+        )
+    return result
 
 
 def save_authority_config(
@@ -155,9 +187,22 @@ def save_authority_config(
     if check["status"] != "PASS":
         raise ValueError("Invalid Forecast Authority: " + "; ".join(check["errors"]))
 
+    payload = check["config"]
+
+    # In production, a global authority change must be published through a
+    # trusted service-role context. Never let one Azure instance silently write
+    # a local-only authority that other instances cannot see.
+    if repo_root is None and SHARED_AUTHORITY_ENABLED:
+        write_ready, reason = shared_authority_write_configuration_status()
+        if not write_ready:
+            raise PermissionError(
+                "Shared Forecast Authority is read-only in this runtime. "
+                + reason
+            )
+        publish_shared_authority(payload)
+
     path = authority_path(repo_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = check["config"]
 
     fd, temp_name = tempfile.mkstemp(
         prefix="forecast_authority_",
