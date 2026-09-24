@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from market_forecaster.core.demo_universe import demo_symbols
 from market_forecaster.core.forecast_authority import load_authority_config
 from market_forecaster.core.forecast_contract import build_forecast_contract
+from market_forecaster.services.shared_contract_store import (
+    SharedContractStoreError,
+    publish_shared_contract,
+    shared_write_configuration_status,
+)
 
 
 def refresh_demo_contracts(*, period: str = "10y", folds: int = 6) -> dict:
@@ -23,12 +28,27 @@ def refresh_demo_contracts(*, period: str = "10y", folds: int = 6) -> dict:
                 test_size=20,
                 persist=True,
             )
-            results.append({
+            shared_status = "SKIPPED"
+            shared_error = None
+            shared_ready, _shared_reason = shared_write_configuration_status()
+            if shared_ready:
+                try:
+                    publish_shared_contract(contract)
+                    shared_status = "PUBLISHED"
+                except SharedContractStoreError as exc:
+                    shared_status = "ERROR"
+                    shared_error = str(exc)
+
+            result_row = {
                 "ticker": row.ticker,
                 "status": "SUCCESS",
                 "contract_id": contract.get("contract_id"),
                 "generated_at": contract.get("generated_at"),
-            })
+                "shared_publish_status": shared_status,
+            }
+            if shared_error:
+                result_row["shared_publish_error"] = shared_error
+            results.append(result_row)
         except Exception as exc:
             # Existing latest.json remains untouched when generation fails because
             # persistence happens only after a successfully built contract.
