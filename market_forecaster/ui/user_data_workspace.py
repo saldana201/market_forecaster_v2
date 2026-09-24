@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from market_forecaster.core.entitlements import (
+    can_save_portfolio,
+    can_save_watchlist,
     check_position_limit,
     check_watchlist_limit,
     entitlements_for,
@@ -52,6 +54,9 @@ def render_persistent_watchlist(active_ticker: str) -> None:
     client, identity = _persistent_client()
     st.markdown("## My Watchlist")
     st.caption("Saved to your account and protected by Supabase Row Level Security.")
+    if not can_save_watchlist(identity):
+        st.info("Persistent watchlists require an active Standard or Pro subscription.")
+        return
     if client is None:
         return
 
@@ -136,6 +141,9 @@ def render_persistent_portfolio() -> None:
     client, identity = _persistent_client()
     st.markdown("## My Portfolio")
     st.caption("Holdings and cost basis are saved to your authenticated account.")
+    if not can_save_portfolio(identity):
+        st.info("Persistent portfolios require an active Standard or Pro subscription.")
+        return
     if client is None:
         return
 
