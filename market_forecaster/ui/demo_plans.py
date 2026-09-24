@@ -1,4 +1,4 @@
-"""Plan comparison teaser for the anonymous Market Forecaster Demo."""
+"""Plan comparison and account upgrade entry point for the anonymous Demo."""
 from __future__ import annotations
 
 import streamlit as st
@@ -13,7 +13,8 @@ def _plan_card(
     button_label: str,
     key: str,
     featured: bool = False,
-) -> None:
+    disabled: bool = False,
+) -> bool:
     with st.container(border=True):
         if featured:
             st.markdown("**MOST PRACTICAL FOR INDIVIDUAL INVESTORS**")
@@ -22,13 +23,19 @@ def _plan_card(
         st.markdown(f"**{badge}**")
         for feature in features:
             st.markdown(f"✓ {feature}")
-        st.button(
+        return st.button(
             button_label,
-            disabled=True,
+            disabled=disabled,
             use_container_width=True,
             key=key,
             type="primary" if featured else "secondary",
         )
+
+
+def _go_to_account(plan: str) -> None:
+    st.session_state["requested_plan"] = plan
+    st.session_state["demo_navigation"] = "◎ Account"
+    st.rerun()
 
 
 def render_demo_plans() -> None:
@@ -53,13 +60,14 @@ def render_demo_plans() -> None:
             ],
             button_label="Current experience",
             key="plan_demo",
+            disabled=True,
         )
 
     with standard:
-        _plan_card(
+        standard_clicked = _plan_card(
             title="Standard",
             subtitle="Build your permanent market workspace",
-            badge="Account plan · Coming next",
+            badge="Subscription plan",
             features=[
                 "Custom supported tickers",
                 "Persistent watchlists",
@@ -67,16 +75,18 @@ def render_demo_plans() -> None:
                 "Forecast history",
                 "Basic export",
             ],
-            button_label="Account access coming soon",
+            button_label="Create account for Standard",
             key="plan_standard",
             featured=True,
         )
+        if standard_clicked:
+            _go_to_account("standard")
 
     with pro:
-        _plan_card(
+        pro_clicked = _plan_card(
             title="Pro",
             subtitle="Advanced research and integration",
-            badge="Research plan · Later in 4.1",
+            badge="Research subscription",
             features=[
                 "Everything in Standard",
                 "Research Lab",
@@ -85,16 +95,18 @@ def render_demo_plans() -> None:
                 "Calibration diagnostics",
                 "API access",
             ],
-            button_label="Pro access coming soon",
+            button_label="Create account for Pro",
             key="plan_pro",
         )
+        if pro_clicked:
+            _go_to_account("pro")
 
     st.markdown(
         """
 <div class="mf-session-note">
-<strong>Why accounts come before billing:</strong>
-we are establishing secure identity and user-isolated persistence first, so watchlists and portfolio data
-have the correct ownership model before subscriptions are activated.
+<strong>Secure upgrade flow:</strong>
+create and verify your account first. Subscription checkout is then handled on Stripe-hosted pages,
+while Market Forecaster reads the resulting subscription state to unlock Standard or Pro entitlements.
 </div>
         """,
         unsafe_allow_html=True,
