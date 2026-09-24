@@ -42,11 +42,15 @@ from market_forecaster.config import (
     DISCLAIMER,
     MULTI_USER_ENABLED,
     PUBLIC_DEMO_API_ENABLED,
+    SHARED_AUTHORITY_ENABLED,
     SHARED_CONTRACT_STORAGE_ENABLED,
     __version__,
 )
 from market_forecaster.core.ensemble import ARIMA_AVAILABLE, LSTM_AVAILABLE
 from market_forecaster.core.xgb_multihorizon import XGBOOST_AVAILABLE
+from market_forecaster.services.shared_authority_store import (
+    shared_authority_read_configuration_status,
+)
 from market_forecaster.services.shared_contract_store import shared_read_configuration_status
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -134,6 +138,7 @@ async def health():
 async def ready():
     # Import/config validation happens at module import. Report optional model state here.
     shared_ready, shared_reason = shared_read_configuration_status()
+    authority_ready, authority_reason = shared_authority_read_configuration_status()
     return {
         "status": "ready",
         "version": __version__,
@@ -147,6 +152,14 @@ async def ready():
                 "local_fallback" if SHARED_CONTRACT_STORAGE_ENABLED else "disabled"
             ),
             "reason": None if shared_ready else shared_reason,
+        },
+        "shared_forecast_authority": {
+            "enabled": SHARED_AUTHORITY_ENABLED,
+            "configured": authority_ready,
+            "status": "shared" if authority_ready else (
+                "local_fallback" if SHARED_AUTHORITY_ENABLED else "disabled"
+            ),
+            "reason": None if authority_ready else authority_reason,
         },
         "models_available": {
             "prophet": True,
