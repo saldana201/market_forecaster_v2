@@ -29,8 +29,12 @@ def render_sidebar() -> ForecastRequest:
         st.markdown("### Forecast")
         ensure_demo_session(st.session_state)
         identity = resolve_identity(st.session_state)
-        if DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated:
-            st.markdown("**FREE DEMO**")
+        if DEMO_MODE_ENABLED and identity.plan == "demo":
+            st.markdown(
+                "**ACCOUNT · DEMO ACCESS**"
+                if identity.authenticated
+                else "**FREE DEMO**"
+            )
             symbols = list(demo_tickers())
             existing = str(st.session_state.get("ticker", "SPY")).upper().strip()
             default_index = symbols.index(existing) if existing in symbols else symbols.index("SPY")
@@ -41,11 +45,26 @@ def render_sidebar() -> ForecastRequest:
                 help="Choose from the curated Demo universe. Discover contains the full market-card explorer.",
             )
             st.session_state["ticker"] = ticker
-            st.caption("Full-quality cached forecasts · no account required")
-            st.markdown("---")
-            st.markdown("**Your Demo workspace**")
-            st.caption("Watchlist and portfolio are private to this temporary session.")
-            st.info("Custom tickers and permanent saves unlock with Standard. Research Lab and API access unlock with Pro.")
+            if identity.authenticated:
+                st.caption("Full-quality cached forecasts · signed-in Demo access")
+                st.markdown("---")
+                st.markdown("**Upgrade your account**")
+                st.caption(
+                    "This account is currently on Demo entitlements. "
+                    "Custom tickers and persistent saves require Standard."
+                )
+                st.info("Research Lab and API access unlock with Pro.")
+            else:
+                st.caption("Full-quality cached forecasts · no account required")
+                st.markdown("---")
+                st.markdown("**Your Demo workspace**")
+                st.caption(
+                    "Watchlist and portfolio are private to this temporary session."
+                )
+                st.info(
+                    "Custom tickers and permanent saves unlock with Standard. "
+                    "Research Lab and API access unlock with Pro."
+                )
             return ForecastRequest(
                 ticker=ticker,
                 period="5y",
