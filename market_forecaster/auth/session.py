@@ -121,6 +121,9 @@ def clear_authenticated_session(state: MutableMapping) -> AppIdentity:
     state.pop("user_preferences", None)
     state.pop("account_default_ticker", None)
     state.pop("account_timezone", None)
+    state.pop("simple_forecast_contract", None)
+    state.pop("billing_checkout_url", None)
+    state.pop("billing_checkout_plan", None)
     identity = new_demo_identity_for_session(str(state[DEMO_SESSION_KEY]["session_id"]))
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
     return identity
