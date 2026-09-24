@@ -132,6 +132,14 @@ if is_demo:
         "◎ Account",
         "? Help",
     )
+
+    # Apply programmatic navigation before the segmented-control widget is
+    # instantiated. Streamlit forbids changing a widget-backed session key
+    # after that widget has been created during the same run.
+    pending_demo_navigation = st.session_state.pop("demo_navigation_pending", None)
+    if pending_demo_navigation in demo_nav_options:
+        st.session_state["demo_navigation"] = pending_demo_navigation
+
     if st.session_state.get("demo_navigation") not in demo_nav_options:
         st.session_state["demo_navigation"] = demo_nav_options[0]
 
