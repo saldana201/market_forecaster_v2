@@ -216,10 +216,10 @@ def _generate_contract(ticker: str, period: str, folds: int) -> dict:
 def render_forecast_dashboard(current_ticker: str) -> None:
     ticker = str(current_ticker or "").upper().strip()
     identity = resolve_identity(st.session_state)
-    is_demo = DEMO_MODE_ENABLED and identity.plan == "demo" and not identity.authenticated
+    demo_cache_only = DEMO_MODE_ENABLED and identity.plan == "demo"
 
     st.subheader(f"Forecast Outlook — {ticker}")
-    if is_demo:
+    if demo_cache_only:
         st.caption(
             "Full-quality shared Forecast Contract · 1D / 5D / 10D / 20D outlook · "
             "cached for fast anonymous access."
@@ -230,7 +230,7 @@ def render_forecast_dashboard(current_ticker: str) -> None:
             "Technical research details are in Research Lab."
         )
 
-    if is_demo:
+    if demo_cache_only:
         try:
             contract = load_demo_forecast(ticker).contract
         except ForecastAccessError:
@@ -247,18 +247,18 @@ def render_forecast_dashboard(current_ticker: str) -> None:
             if contract else "No saved forecast is available yet."
         )
     with top_right:
-        refresh_clicked = False if is_demo else st.button(
+        refresh_clicked = False if demo_cache_only else st.button(
             "Refresh Forecast" if contract else "Generate Forecast",
             type="primary",
             use_container_width=True,
             key="simple_generate_forecast",
         )
-        if is_demo:
+        if demo_cache_only:
             st.caption("Shared cached Demo forecast")
 
     period = "5y"
     folds = 4
-    if not is_demo:
+    if not demo_cache_only:
         with st.expander("Forecast settings", expanded=False):
             st.selectbox("History used", ["Standard — 5 years", "Deep — 10 years"], index=0, key="simple_contract_history", help="More history is slower but provides more calibration evidence.")
             st.selectbox("Validation depth", ["Standard", "Deep"], index=0, key="simple_contract_validation", help="Deep validation uses more historical test periods and takes longer.")
@@ -275,7 +275,7 @@ def render_forecast_dashboard(current_ticker: str) -> None:
                 return
 
     if not contract:
-        if is_demo:
+        if demo_cache_only:
             st.warning(
                 "This Demo symbol does not have a cached Forecast Contract yet. "
                 "Run the scheduled Demo refresh job; anonymous traffic will not trigger training."
