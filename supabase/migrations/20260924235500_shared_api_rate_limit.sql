@@ -58,10 +58,10 @@ begin
   values (p_bucket_key, v_now, 0, v_now)
   on conflict (bucket_key) do nothing;
 
-  select window_started_at, request_count
+  select b.window_started_at, b.request_count
     into v_started, v_count
-  from private.api_rate_limit_buckets
-  where bucket_key = p_bucket_key
+  from private.api_rate_limit_buckets as b
+  where b.bucket_key = p_bucket_key
   for update;
 
   if v_started <= v_now - make_interval(secs => p_window_seconds) then
@@ -71,11 +71,11 @@ begin
     v_count := v_count + 1;
   end if;
 
-  update private.api_rate_limit_buckets
+  update private.api_rate_limit_buckets as b
   set window_started_at = v_started,
       request_count = v_count,
       updated_at = v_now
-  where bucket_key = p_bucket_key;
+  where b.bucket_key = p_bucket_key;
 
   v_reset := v_started + make_interval(secs => p_window_seconds);
 
