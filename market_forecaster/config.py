@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-__version__ = "4.1.3"
+__version__ = "4.1.4"
 APP_NAME = "Market Forecaster"
 BRAND = "OneEight AI Systems"
 
@@ -29,6 +29,7 @@ DATABASE_PERSISTENCE_ENABLED = _env_flag("DATABASE_PERSISTENCE_ENABLED", False)
 SUBSCRIPTIONS_ENABLED = _env_flag("SUBSCRIPTIONS_ENABLED", False)
 PRO_RESEARCH_ENABLED = _env_flag("PRO_RESEARCH_ENABLED", False)
 PUBLIC_DEMO_API_ENABLED = _env_flag("PUBLIC_DEMO_API_ENABLED", True)
+SHARED_CONTRACT_STORAGE_ENABLED = _env_flag("SHARED_CONTRACT_STORAGE_ENABLED", False)
 
 # -------------------------------------------------------------------
 # Guardrails
