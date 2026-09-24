@@ -135,7 +135,8 @@ def render_forecast_intelligence_panel(current_ticker: str) -> None:
         if not authority_write_allowed:
             st.caption(
                 "Production Forecast Authority is shared and read-only in this app session. "
-                "Publish changes from a trusted admin environment."
+                "Publish changes from a trusted admin environment. "
+                + authority_write_reason
             )
 
     if st.button(
