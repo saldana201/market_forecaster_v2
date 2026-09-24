@@ -14,11 +14,13 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
     env:
-      MARKET_FORECASTER_SUPABASE_URL: ${{ secrets.MARKET_FORECASTER_SUPABASE_URL }}
-      MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY }}
-      SHARED_CONTRACT_STORAGE_ENABLED: 'true'
-      SHARED_AUTHORITY_ENABLED: 'true'
+      DEMO_PUBLISH_URL: https://pbttpkbkimqdoilmwryi.supabase.co/functions/v1/publish-demo-contracts
+      SHARED_CONTRACT_STORAGE_ENABLED: 'false'
+      SHARED_AUTHORITY_ENABLED: 'false'
 
     steps:
       - uses: actions/checkout@v4
@@ -29,27 +31,113 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Check shared-store secrets
-        id: shared-secrets
-        shell: bash
-        run: |
-          if [ -z "$MARKET_FORECASTER_SUPABASE_URL" ] || [ -z "$MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Shared refresh skipped: required Supabase GitHub secrets are not configured."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install runtime dependencies
-        if: steps.shared-secrets.outputs.configured == 'true'
         run: pip install -r requirements.txt
 
-      - name: Generate and publish shared Demo contracts
-        if: steps.shared-secrets.outputs.configured == 'true'
+      - name: Fetch governed Forecast Authority with GitHub OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_RESPONSE="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=market-forecaster-supabase")"
+          OIDC_TOKEN="$(printf '%s' "$TOKEN_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          test -n "$OIDC_TOKEN"
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            "$DEMO_PUBLISH_URL" \
+            -o /tmp/shared-authority.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/shared-authority.json").read_text())
+          config = payload.get("config")
+          if not isinstance(config, dict):
+              raise SystemExit("Shared Forecast Authority response is invalid.")
+
+          target = Path(".local/forecast_authority.json")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(
+              json.dumps(config, indent=2, sort_keys=True),
+              encoding="utf-8",
+          )
+          print(
+              "Loaded shared Forecast Authority revision",
+              payload.get("revision"),
+          )
+          PY
+
+      - name: Generate Demo Forecast Contracts
         run: |
           python -m market_forecaster.scripts.refresh_demo_contracts --period 5y --folds 4
+          python -m market_forecaster.scripts.check_demo_cache --fail-if-incomplete --compact
 
-      - name: Verify shared Demo cache
-        if: steps.shared-secrets.outputs.configured == 'true'
+      - name: Package validated Demo Forecast Contracts
+        shell: bash
         run: |
-          python -m market_forecaster.scripts.check_demo_cache --fail-if-incomplete --require-shared --compact
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from market_forecaster.core.demo_universe import demo_tickers
+
+          contracts = []
+          for ticker in demo_tickers():
+              path = Path(".local/forecast_contracts") / ticker / "latest.json"
+              if not path.exists():
+                  raise SystemExit(f"Missing generated Demo contract: {ticker}")
+              contract = json.loads(path.read_text(encoding="utf-8"))
+              if contract.get("status") != "READY":
+                  raise SystemExit(f"Demo contract is not READY: {ticker}")
+              contracts.append(contract)
+
+          if len(contracts) != 14:
+              raise SystemExit(
+                  f"Expected 14 Demo contracts, found {len(contracts)}"
+              )
+
+          Path("/tmp/demo-contracts.json").write_text(
+              json.dumps({"contracts": contracts}, separators=(",", ":")),
+              encoding="utf-8",
+          )
+          print("Packaged 14 READY Demo Forecast Contracts.")
+          PY
+
+      - name: Publish shared Demo contracts with GitHub OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_RESPONSE="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=market-forecaster-supabase")"
+          OIDC_TOKEN="$(printf '%s' "$TOKEN_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          test -n "$OIDC_TOKEN"
+
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/demo-contracts.json \
+            "$DEMO_PUBLISH_URL" \
+            -o /tmp/publish-result.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/publish-result.json").read_text())
+          if int(payload.get("published", 0)) != 14:
+              raise SystemExit(
+                  "Shared publisher did not verify all 14 Demo contracts."
+              )
+          tickers = payload.get("tickers") or []
+          print(
+              "Published and verified",
+              len(tickers),
+              "shared Demo Forecast Contracts:",
+              ", ".join(tickers),
+          )
+          PY
