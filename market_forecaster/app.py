@@ -86,7 +86,10 @@ from market_forecaster.auth.factory import auth_configuration_status, get_auth_p
 from market_forecaster.auth.provider import AuthProviderError, InvalidToken
 from market_forecaster.auth.session import sync_authenticated_identity
 from market_forecaster.persistence.supabase_data import PersistenceError
-from market_forecaster.services.subscriptions import sync_subscription_identity
+from market_forecaster.services.subscriptions import (
+    normalize_requested_plan,
+    sync_subscription_identity,
+)
 from market_forecaster.services.user_data import hydrate_user_preferences
 
 # AutoTune
@@ -272,7 +275,18 @@ with tab_research:
         render_research_workspace(req.ticker)
     else:
         st.markdown("## Research Lab")
-        st.info("Research Lab is reserved for Pro. Standard accounts retain full Forecast Contract quality.")
+        requested_plan = normalize_requested_plan(st.session_state.get("requested_plan"))
+        if requested_plan == "pro":
+            st.info(
+                "Pro is selected for this account, but Pro entitlement is not active yet. "
+                "Research Lab unlocks after the Pro subscription is confirmed by Stripe and "
+                "subscription authority. Your standard Forecast Contract quality is unchanged."
+            )
+        else:
+            st.info(
+                "Research Lab is reserved for active Pro subscriptions. "
+                "Standard accounts retain full Forecast Contract quality."
+            )
 
 with tab_health:
     render_system_health_workspace(req)
