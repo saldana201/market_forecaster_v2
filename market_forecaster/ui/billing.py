@@ -42,6 +42,14 @@ def render_plan_selector(*, title: str = "Choose your subscription tier") -> str
     choice_key = "account_plan_choice"
     seed_key = "_account_plan_choice_seed"
 
+    # Authentication may finish after this widget existed on the previous run.
+    # Consume any queued selection before instantiating the widget.
+    pending_choice = st.session_state.pop("account_plan_choice_pending", None)
+    if pending_choice in PLAN_OPTIONS:
+        st.session_state[choice_key] = pending_choice
+        st.session_state[seed_key] = str(pending_choice).lower()
+        requested = normalize_requested_plan(pending_choice)
+
     # Seed the visible control from the plan selected on the Demo Plans page.
     # This occurs before the widget is instantiated, so it stays within
     # Streamlit's widget-state rules.
