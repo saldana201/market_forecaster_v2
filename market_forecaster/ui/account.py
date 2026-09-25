@@ -23,7 +23,7 @@ from market_forecaster.services.user_data import (
     persistence_configuration_status,
     save_user_preferences,
 )
-from market_forecaster.ui.billing import render_billing_panel
+from market_forecaster.ui.billing import render_billing_panel, render_plan_selector
 
 
 def _login_form() -> None:
@@ -291,6 +291,12 @@ def render_account_screen() -> None:
     if not ready:
         st.warning(f"Account provider is not configured: {reason}")
         return
+
+    selected_plan = render_plan_selector()
+    st.caption(
+        f"Continue with **{selected_plan.title()}** by signing in to an existing account "
+        "or creating a new one. You can change the tier above before continuing."
+    )
 
     login_tab, register_tab = st.tabs(["Sign in", "Create account"])
     with login_tab:
