@@ -101,11 +101,15 @@ class SupabaseAuthProvider:
             raise AuthProviderError("Authentication provider returned no user subject.")
         metadata = row.get("user_metadata") or {}
         email_confirmed = bool(row.get("email_confirmed_at") or row.get("confirmed_at"))
+        requested_plan = str(metadata.get("requested_plan") or "").strip().lower()
+        if requested_plan not in {"standard", "pro"}:
+            requested_plan = None
         return AuthUser(
             subject=subject,
             email=row.get("email"),
             display_name=metadata.get("display_name") or metadata.get("name"),
             email_confirmed=email_confirmed,
+            requested_plan=requested_plan,
         )
 
     @staticmethod
@@ -120,10 +124,22 @@ class SupabaseAuthProvider:
             token_type=str(payload.get("token_type") or "bearer"),
         )
 
-    def register(self, email: str, password: str, display_name: str | None = None) -> AuthResult:
+    def register(
+        self,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        requested_plan: str | None = None,
+    ) -> AuthResult:
         payload: dict = {"email": email.strip(), "password": password}
+        metadata: dict[str, str] = {}
         if display_name:
-            payload["data"] = {"display_name": display_name.strip()}
+            metadata["display_name"] = display_name.strip()
+        normalized_plan = str(requested_plan or "").strip().lower()
+        if normalized_plan in {"standard", "pro"}:
+            metadata["requested_plan"] = normalized_plan
+        if metadata:
+            payload["data"] = metadata
 
         result = self._request("/auth/v1/signup", method="POST", payload=payload)
 
