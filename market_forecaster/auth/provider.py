@@ -35,6 +35,7 @@ class AuthUser:
     email: str | None = None
     display_name: str | None = None
     email_confirmed: bool = False
+    requested_plan: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,13 @@ class AuthProvider(Protocol):
 
     name: str
 
-    def register(self, email: str, password: str, display_name: str | None = None) -> AuthResult:
+    def register(
+        self,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        requested_plan: str | None = None,
+    ) -> AuthResult:
         ...
 
     def login(self, email: str, password: str) -> AuthResult:
