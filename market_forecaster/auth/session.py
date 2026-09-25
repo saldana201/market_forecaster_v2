@@ -23,6 +23,15 @@ AUTH_SESSION_KEY = "auth_session"
 AUTH_PROFILE_KEY = "auth_profile"
 
 
+
+def _restore_requested_plan(state: MutableMapping, user: AuthUser) -> None:
+    requested = str(user.requested_plan or "").strip().lower()
+    if requested in {"standard", "pro"}:
+        state["requested_plan"] = requested
+        state["account_plan_choice"] = requested.title()
+        state["_account_plan_choice_seed"] = requested
+
+
 def stable_internal_user_id(provider_name: str, subject: str) -> str:
     """Create a stable application UUID without using email as the key."""
     source = f"market-forecaster:{provider_name.strip().lower()}:{subject.strip()}"
@@ -78,6 +87,7 @@ def establish_authenticated_session(
         "email_confirmed": result.user.email_confirmed,
     }
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
+    _restore_requested_plan(state, result.user)
     return identity
 
 
@@ -110,6 +120,7 @@ def sync_authenticated_identity(
         "email_confirmed": user.email_confirmed,
     }
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
+    _restore_requested_plan(state, user)
     return identity
 
 
