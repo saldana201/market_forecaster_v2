@@ -33,6 +33,59 @@ def _status_label(status: str) -> str:
 
 
 
+PLAN_OPTIONS = ("Standard", "Pro")
+
+
+def render_plan_selector(*, title: str = "Choose your subscription tier") -> str:
+    """Show and persist an explicit Standard/Pro choice without tying it to auth state."""
+    requested = normalize_requested_plan(st.session_state.get("requested_plan"))
+    choice_key = "account_plan_choice"
+    seed_key = "_account_plan_choice_seed"
+
+    # Seed the visible control from the plan selected on the Demo Plans page.
+    # This occurs before the widget is instantiated, so it stays within
+    # Streamlit's widget-state rules.
+    if requested and st.session_state.get(seed_key) != requested:
+        st.session_state[choice_key] = requested.title()
+        st.session_state[seed_key] = requested
+    elif st.session_state.get(choice_key) not in PLAN_OPTIONS:
+        initial = (requested or "standard").title()
+        st.session_state[choice_key] = initial
+        st.session_state[seed_key] = initial.lower()
+
+    previous = normalize_requested_plan(st.session_state.get("requested_plan"))
+    st.markdown(f"### {title}")
+    choice = st.segmented_control(
+        "Subscription tier",
+        PLAN_OPTIONS,
+        key=choice_key,
+        label_visibility="collapsed",
+    )
+    selected = normalize_requested_plan(choice or st.session_state.get(choice_key)) or "standard"
+
+    if previous != selected:
+        st.session_state["requested_plan"] = selected
+        st.session_state[seed_key] = selected
+        st.session_state.pop("billing_checkout_url", None)
+        st.session_state.pop("billing_checkout_plan", None)
+    else:
+        st.session_state["requested_plan"] = selected
+
+    standard_col, pro_col = st.columns(2)
+    with standard_col:
+        st.markdown("**Standard**")
+        st.caption("Custom tickers · persistent watchlists/portfolios · forecast history · basic export")
+    with pro_col:
+        st.markdown("**Pro**")
+        st.caption("Everything in Standard · Research Lab · advanced diagnostics · API access")
+
+    st.info(
+        f"Selected plan: **{selected.title()}**. "
+        "This choice stays with you through sign-in or account creation."
+    )
+    return selected
+
+
 def capture_billing_return() -> None:
     """Consume Stripe return query state once and convert it to session UI state."""
     try:
@@ -154,10 +207,12 @@ def render_billing_panel() -> None:
         with c2:
             st.metric("Billing status", _status_label(identity.subscription_status))
 
+        selected_plan = render_plan_selector()
+
         if not ready:
-            st.caption(
-                "Subscription billing is installed but not active for this deployment yet. "
-                f"{reason}"
+            st.info(
+                f"{selected_plan.title()} is selected. Stripe Checkout is not active on this "
+                f"deployment yet, so no payment can be started. {reason}"
             )
             return
 
@@ -174,47 +229,32 @@ def render_billing_panel() -> None:
             "Payments are handled on Stripe-hosted pages. Market Forecaster never stores card numbers."
         )
 
-        standard_col, pro_col = st.columns(2)
-
-        with standard_col:
-            if st.button(
-                "Choose Standard",
-                key="billing_standard_checkout",
-                use_container_width=True,
-                disabled=identity.plan == "standard"
-                and identity.subscription_status in {"active", "trialing", "past_due"},
-            ):
-                try:
-                    st.session_state["billing_checkout_url"] = create_checkout_url(
-                        st.session_state,
-                        identity,
-                        "standard",
-                    )
-                except BillingError as exc:
-                    st.error(str(exc))
-
-        with pro_col:
-            if st.button(
-                "Choose Pro",
-                key="billing_pro_checkout",
-                type="primary",
-                use_container_width=True,
-                disabled=identity.plan == "pro"
-                and identity.subscription_status in {"active", "trialing", "past_due"},
-            ):
-                try:
-                    st.session_state["billing_checkout_url"] = create_checkout_url(
-                        st.session_state,
-                        identity,
-                        "pro",
-                    )
-                except BillingError as exc:
-                    st.error(str(exc))
+        already_active = requested_plan_is_satisfied(identity, selected_plan)
+        if already_active:
+            st.success(f"{selected_plan.title()} access is already active on this account.")
+        elif st.button(
+            f"Prepare {selected_plan.title()} Checkout",
+            key="billing_selected_plan_checkout",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                st.session_state["billing_checkout_plan"] = selected_plan
+                st.session_state["billing_checkout_url"] = create_checkout_url(
+                    st.session_state,
+                    identity,
+                    selected_plan,
+                )
+            except BillingError as exc:
+                st.error(str(exc))
 
         checkout_url = st.session_state.get("billing_checkout_url")
-        if checkout_url:
+        checkout_plan = normalize_requested_plan(
+            st.session_state.get("billing_checkout_plan")
+        )
+        if checkout_url and checkout_plan == selected_plan:
             st.link_button(
-                "Continue to secure Stripe Checkout",
+                f"Continue to Stripe for {selected_plan.title()}",
                 str(checkout_url),
                 type="primary",
                 use_container_width=True,
