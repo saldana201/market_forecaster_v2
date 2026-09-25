@@ -22,9 +22,21 @@ from market_forecaster.core.session_identity import resolve_identity
 class FakeAuthProvider:
     name = "fake"
 
-    def register(self, email: str, password: str, display_name: str | None = None) -> AuthResult:
+    def register(
+        self,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        requested_plan: str | None = None,
+    ) -> AuthResult:
         return AuthResult(
-            user=AuthUser("subject-register", email, display_name, True),
+            user=AuthUser(
+                "subject-register",
+                email,
+                display_name,
+                True,
+                requested_plan=requested_plan,
+            ),
             tokens=AuthTokens("good-register"),
         )
 
@@ -284,3 +296,116 @@ def test_supabase_signup_still_accepts_nested_user_response(monkeypatch):
 
     assert result.user.subject == payload["user"]["id"]
     assert result.requires_email_confirmation is True
+
+
+def test_requested_pro_plan_is_restored_into_authenticated_session():
+    state = {}
+    result = AuthResult(
+        user=AuthUser(
+            subject="subject-pro",
+            email="pro@example.com",
+            display_name="Pro User",
+            email_confirmed=True,
+            requested_plan="pro",
+        ),
+        tokens=AuthTokens(access_token="good-pro"),
+    )
+
+    establish_authenticated_session(state, result, provider_name="supabase")
+
+    assert state["requested_plan"] == "pro"
+    assert state["account_plan_choice"] == "Pro"
+    assert resolve_identity(state).plan == "standard"
+    assert resolve_identity(state).subscription_status == "bootstrap"
+
+
+def test_supabase_register_writes_requested_plan_to_user_metadata(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+    captured = {}
+
+    payload = {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "email": "pro@example.com",
+        "user_metadata": {
+            "display_name": "Pro User",
+            "requested_plan": "pro",
+        },
+        "email_confirmed_at": None,
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        import json
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        fake_urlopen,
+    )
+
+    result = provider.register(
+        "pro@example.com",
+        "password123",
+        "Pro User",
+        requested_plan="pro",
+    )
+
+    assert captured["body"]["data"]["requested_plan"] == "pro"
+    assert result.user.requested_plan == "pro"
+
+
+def test_supabase_login_restores_requested_plan_from_user_metadata(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+
+    payload = {
+        "access_token": "access",
+        "refresh_token": "refresh",
+        "expires_in": 3600,
+        "user": {
+            "id": "33333333-3333-4333-8333-333333333333",
+            "email": "pro@example.com",
+            "user_metadata": {
+                "display_name": "Pro User",
+                "requested_plan": "pro",
+            },
+            "email_confirmed_at": "2026-09-25T19:00:00Z",
+        },
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    result = provider.login("pro@example.com", "password123")
+
+    assert result.user.requested_plan == "pro"
+    assert result.tokens is not None
