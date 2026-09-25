@@ -16,6 +16,7 @@ from market_forecaster.auth.session import (
 from market_forecaster.config import MULTI_USER_ENABLED
 from market_forecaster.core.session_identity import resolve_identity
 from market_forecaster.persistence.supabase_data import PersistenceError
+from market_forecaster.services.subscriptions import normalize_requested_plan
 from market_forecaster.services.user_data import (
     client_for_state,
     ensure_account_foundation,
@@ -97,7 +98,13 @@ def _register_form() -> None:
 
     try:
         provider = get_auth_provider()
-        result = provider.register(email.strip(), password, display_name.strip() or None)
+        requested_plan = normalize_requested_plan(st.session_state.get("requested_plan"))
+        result = provider.register(
+            email.strip(),
+            password,
+            display_name.strip() or None,
+            requested_plan=requested_plan,
+        )
         if result.requires_email_confirmation or result.tokens is None:
             st.session_state["account_signup_cooldown_until"] = time.time() + 60
             st.success(
@@ -222,15 +229,27 @@ def _signed_in_account() -> None:
 
     persistence_ready, persistence_reason = persistence_configuration_status()
 
+    requested_plan = normalize_requested_plan(st.session_state.get("requested_plan"))
+    active_access = identity.plan.title()
+    if identity.subscription_status == "bootstrap":
+        active_access = f"{active_access} (temporary)"
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Plan", identity.plan.title())
+        st.metric("Active access", active_access)
     with c2:
-        st.metric("Status", "Signed in")
+        st.metric("Selected tier", requested_plan.title() if requested_plan else "Not selected")
     with c3:
-        st.metric("Email", profile.get("email") or "—")
+        st.metric("Status", "Signed in")
     with c4:
         st.metric("Account storage", "Enabled" if persistence_ready else "Disabled")
+
+    st.caption(f"Signed in as {profile.get('email') or '—'}")
+    if requested_plan and identity.subscription_status == "bootstrap":
+        st.info(
+            f"You selected **{requested_plan.title()}**. Current Standard access is temporary bootstrap "
+            "access while paid billing is disabled; your selected tier has not been changed."
+        )
 
     if persistence_ready:
         try:
