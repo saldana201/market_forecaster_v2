@@ -24,16 +24,26 @@ The scheduled workflow is:
 
 It runs after U.S. market close on trading-week days and can also be started manually.
 
-Configure these GitHub repository secrets:
+The publisher is secretless from GitHub's perspective. GitHub Actions requests a
+short-lived OIDC token with audience:
 
-    MARKET_FORECASTER_SUPABASE_URL
-    MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY
+    market-forecaster-supabase
 
-If either secret is absent, the scheduled job exits cleanly without publishing.
+The Supabase `publish-demo-contracts` Edge Function verifies the token against
+GitHub's public JWKS and pins the repository, master ref, workflow path, and
+allowed event types before using Supabase's internal service-role credential.
 
-The publisher writes both:
-- local deployment-compatible Forecast Contract snapshots
-- the shared Supabase latest-contract row
+No Supabase service-role key is stored in GitHub for Demo publishing.
+
+The refresh flow:
+
+1. obtains a short-lived GitHub OIDC token
+2. fetches the active shared Forecast Authority
+3. generates all 14 Demo Forecast Contracts locally
+4. requires every contract to be READY
+5. obtains a fresh OIDC token
+6. publishes exactly the 14-contract Demo set
+7. verifies every published row before returning success
 
 ## 3. Azure App Service baseline
 
@@ -136,11 +146,46 @@ Never commit:
 - Supabase service-role key
 - production API key
 
-## 9. Production cutover checklist
+## 9. Automated readiness gate
+
+Run:
+
+    python -m market_forecaster.scripts.production_readiness --strict
+
+The command evaluates the configured deployment without printing credentials.
+
+It checks:
+- managed authentication configuration
+- persistent user-data configuration
+- shared Forecast Contract storage
+- shared Forecast Authority
+- all 14 Demo contracts
+- Stripe subscription configuration
+- shared API rate limiting
+
+Stripe is a warning while subscriptions are intentionally disabled.
+
+For a paid-public-launch gate, require billing too:
+
+    python -m market_forecaster.scripts.production_readiness --strict --require-billing
+
+A non-zero exit means at least one required production dependency is not ready.
+
+## 10. Supabase security advisory review
+
+The private API rate-limit bucket table is intentionally inaccessible to anon and
+authenticated roles, and rate-limit mutations occur only through a service-role-only
+SECURITY DEFINER RPC.
+
+Supabase may still flag any RLS-disabled table as a security advisory. Treat that
+as an explicit release review item rather than suppressing it. If RLS is enabled,
+verify the trusted RPC still works before deploying the change.
+
+## 11. Production cutover checklist
 
 1. CI green.
 2. Supabase migrations applied.
-3. Scheduled refresh GitHub secrets configured.
+3. GitHub OIDC publisher workflow succeeds from master.
 4. Run the shared refresh workflow manually once.
 5. Confirm all 14 Demo contracts exist in public.shared_forecast_contracts.
 6. Set SHARED_CONTRACT_STORAGE_ENABLED=true in Azure.
@@ -149,4 +194,6 @@ Never commit:
 9. Verify a shared-store read outage still falls back to local contracts.
 10. Verify two authenticated users remain isolated by RLS.
 11. Verify Stripe remains disabled until its separate test-mode acceptance is complete.
-12. Verify Azure deployment and custom domain.
+12. Run production_readiness --strict.
+13. For paid launch, run production_readiness --strict --require-billing.
+14. Verify Azure deployment and custom domain.
