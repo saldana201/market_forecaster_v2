@@ -1,6 +1,8 @@
 """Authenticated persistent Watchlist and Portfolio UI for Market Forecaster 4.1.2."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pandas as pd
 import streamlit as st
 
@@ -13,7 +15,11 @@ from market_forecaster.core.entitlements import (
 )
 from market_forecaster.core.session_identity import resolve_identity
 from market_forecaster.persistence.supabase_data import PersistenceError
-from market_forecaster.services.forecast_access import demo_cache_status
+from market_forecaster.services.forecast_access import (
+    ForecastAccessError,
+    demo_cache_status,
+    get_forecast_for_identity,
+)
 from market_forecaster.services.user_data import (
     add_watchlist_item,
     client_for_state,
@@ -25,6 +31,11 @@ from market_forecaster.services.user_data import (
     remove_watchlist_item,
     save_primary_portfolio,
 )
+from market_forecaster.ui.market_cards import (
+    group_watchlist_symbols,
+    render_horizon_selector,
+    render_watchlist_market_card,
+)
 
 
 def _money(value) -> str:
@@ -32,6 +43,53 @@ def _money(value) -> str:
         return "$" + f"{float(value):,.2f}"
     except Exception:
         return "—"
+
+
+def _contract_status_for_symbol(identity, symbol: str, demo_map: dict[str, dict]) -> dict:
+    symbol = str(symbol or "").upper().strip()
+    if symbol in demo_map:
+        return demo_map[symbol]
+
+    try:
+        result = get_forecast_for_identity(identity, symbol)
+        contract = result.contract
+    except ForecastAccessError:
+        return {
+            "ticker": symbol,
+            "display_name": symbol,
+            "category": "Other",
+            "available": False,
+            "source": "unavailable",
+            "current_price": None,
+            "forecasts": [],
+            "age_hours": None,
+        }
+
+    generated_at = contract.get("generated_at")
+    age_hours = None
+    if generated_at:
+        try:
+            stamp = datetime.fromisoformat(str(generated_at).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            age_hours = max(
+                0.0,
+                (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds() / 3600.0,
+            )
+        except Exception:
+            age_hours = None
+
+    return {
+        "ticker": symbol,
+        "display_name": symbol,
+        "category": "Other",
+        "available": True,
+        "source": result.source,
+        "generated_at": generated_at,
+        "current_price": contract.get("current_price"),
+        "forecasts": contract.get("forecasts", []),
+        "age_hours": age_hours,
+    }
 
 
 def _persistent_client():
@@ -53,7 +111,9 @@ def _persistent_client():
 def render_persistent_watchlist(active_ticker: str) -> None:
     client, identity = _persistent_client()
     st.markdown("## My Watchlist")
-    st.caption("Saved to your account and protected by Supabase Row Level Security.")
+    st.caption(
+        "Saved to your account, grouped by sector, and rendered with the same forecast cards used in Market Explorer."
+    )
     if not can_save_watchlist(identity):
         st.info("Persistent watchlists require an active Standard or Pro subscription.")
         return
@@ -103,38 +163,72 @@ def render_persistent_watchlist(active_ticker: str) -> None:
     if not items:
         with st.container(border=True):
             st.markdown("### Your watchlist is ready")
-            st.caption("Open any market and add it here. It will follow your account across sessions.")
+            st.caption(
+                "Open any market and add it here. It will follow your account across sessions."
+            )
         return
 
-    cache_map = {row["ticker"]: row for row in demo_cache_status()}
-    cols = st.columns(3)
-    for idx, row in enumerate(items):
-        symbol = str(row.get("ticker") or "").upper()
-        cache = cache_map.get(symbol, {})
-        with cols[idx % 3]:
-            with st.container(border=True):
-                st.markdown(f"### {symbol}")
-                st.metric("Current", _money(cache.get("current_price")))
-                if not cache:
-                    st.caption("Live cached Demo quote not available; the saved ticker is still persistent.")
-                if st.button(
-                    "Open forecast",
-                    key=f"persistent_watch_open_{row['id']}",
-                    use_container_width=True,
-                    type="primary" if symbol == ticker else "secondary",
-                ):
-                    st.session_state["ticker"] = symbol
+    demo_map = {row["ticker"]: row for row in demo_cache_status()}
+    status_map = {
+        symbol: _contract_status_for_symbol(identity, symbol, demo_map)
+        for symbol in symbols
+    }
+
+    selector_left, selector_right = st.columns([2, 5])
+    with selector_left:
+        st.markdown("### Forecast horizon")
+        horizon_days = render_horizon_selector(key="watchlist_horizon")
+    with selector_right:
+        st.caption(
+            "Choose 1D, 5D, 10D, or 20D once to update every tracked market below."
+        )
+
+    groups = group_watchlist_symbols(symbols, status_map)
+    item_by_symbol = {
+        str(row.get("ticker") or "").upper(): row
+        for row in items
+    }
+
+    for sector, rows in groups.items():
+        st.markdown(f"### {sector}")
+        st.caption(f"{len(rows)} tracked market{'s' if len(rows) != 1 else ''}")
+
+        cols = st.columns(3)
+        for idx, meta in enumerate(rows):
+            status = status_map.get(meta.ticker, {})
+            item = item_by_symbol.get(meta.ticker, {})
+            with cols[idx % 3]:
+                opened = render_watchlist_market_card(
+                    meta=meta,
+                    status=status,
+                    horizon_days=horizon_days,
+                    selected=meta.ticker == ticker,
+                    key_prefix="persistent_watch",
+                )
+                if opened:
+                    st.session_state["ticker"] = meta.ticker
                     st.rerun()
+
+                if not status.get("available"):
+                    st.caption(
+                        "The ticker is saved, but no cached Forecast Contract is available yet."
+                    )
+
                 if st.button(
-                    "Remove",
-                    key=f"persistent_watch_remove_{row['id']}",
+                    "Remove from watchlist",
+                    key=f"persistent_watch_remove_{item.get('id', meta.ticker)}",
                     use_container_width=True,
                 ):
                     try:
-                        remove_watchlist_item(client, identity, str(watchlist["id"]), symbol)
+                        remove_watchlist_item(
+                            client,
+                            identity,
+                            str(watchlist["id"]),
+                            meta.ticker,
+                        )
                         st.rerun()
                     except PersistenceError as exc:
-                        st.error(f"Could not remove {symbol}: {exc}")
+                        st.error(f"Could not remove {meta.ticker}: {exc}")
 
 
 def render_persistent_portfolio() -> None:
