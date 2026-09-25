@@ -88,13 +88,21 @@ def evaluate_readiness(*, require_billing: bool = False) -> dict:
         )
     )
 
-    demo_rows = demo_cache_status()
-    demo_ready = len(demo_rows) == 14 and all(row.get("available") for row in demo_rows)
-    shared_count = sum(1 for row in demo_rows if row.get("source") == "shared_supabase")
-    demo_detail = (
-        f"{len([row for row in demo_rows if row.get('available')])}/14 available; "
-        f"{shared_count}/14 served from shared storage"
-    )
+    try:
+        demo_rows = demo_cache_status()
+        demo_ready = len(demo_rows) == 14 and all(
+            row.get("available") for row in demo_rows
+        )
+        shared_count = sum(
+            1 for row in demo_rows if row.get("source") == "shared_supabase"
+        )
+        demo_detail = (
+            f"{len([row for row in demo_rows if row.get('available')])}/14 available; "
+            f"{shared_count}/14 served from shared storage"
+        )
+    except Exception as exc:
+        demo_ready = False
+        demo_detail = f"Demo cache check failed: {type(exc).__name__}"
     checks.append(
         _check(
             "demo_contracts",
@@ -114,19 +122,27 @@ def evaluate_readiness(*, require_billing: bool = False) -> dict:
         )
     )
 
-    api_settings = load_settings()
-    limiter = SharedRateLimiter(
-        requests=api_settings.rate_limit_requests,
-        window_seconds=api_settings.rate_limit_window_seconds,
-        enabled=api_settings.shared_rate_limit_enabled,
-    )
-    limiter_ready, limiter_reason = limiter.configured()
+    try:
+        api_settings = load_settings()
+        limiter = SharedRateLimiter(
+            requests=api_settings.rate_limit_requests,
+            window_seconds=api_settings.rate_limit_window_seconds,
+            enabled=api_settings.shared_rate_limit_enabled,
+        )
+        limiter_ready, limiter_reason = limiter.configured()
+        limiter_required = api_settings.shared_rate_limit_enabled
+        limiter_detail = "ready" if limiter_ready else limiter_reason
+    except Exception as exc:
+        limiter_ready = False
+        limiter_required = True
+        limiter_detail = f"API settings check failed: {type(exc).__name__}"
+
     checks.append(
         _check(
             "shared_api_rate_limit",
             limiter_ready,
-            api_settings.shared_rate_limit_enabled,
-            "ready" if limiter_ready else limiter_reason,
+            limiter_required,
+            limiter_detail,
         )
     )
 
