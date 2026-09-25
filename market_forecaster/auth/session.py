@@ -24,12 +24,25 @@ AUTH_PROFILE_KEY = "auth_profile"
 
 
 
-def _restore_requested_plan(state: MutableMapping, user: AuthUser) -> None:
+def _restore_requested_plan(
+    state: MutableMapping,
+    user: AuthUser,
+    *,
+    force: bool = False,
+) -> None:
     requested = str(user.requested_plan or "").strip().lower()
-    if requested in {"standard", "pro"}:
-        state["requested_plan"] = requested
-        state["account_plan_choice"] = requested.title()
-        state["_account_plan_choice_seed"] = requested
+    if requested not in {"standard", "pro"}:
+        return
+
+    current = str(state.get("requested_plan") or "").strip().lower()
+    if not force and current in {"standard", "pro"}:
+        return
+
+    state["requested_plan"] = requested
+    # account_plan_choice is a Streamlit widget key. Authentication can finish
+    # after that widget has already been instantiated on the current run, so
+    # never mutate it here. Queue the visible selection for the next render.
+    state["account_plan_choice_pending"] = requested.title()
 
 
 def stable_internal_user_id(provider_name: str, subject: str) -> str:
@@ -87,7 +100,7 @@ def establish_authenticated_session(
         "email_confirmed": result.user.email_confirmed,
     }
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
-    _restore_requested_plan(state, result.user)
+    _restore_requested_plan(state, result.user, force=True)
     return identity
 
 
@@ -120,7 +133,7 @@ def sync_authenticated_identity(
         "email_confirmed": user.email_confirmed,
     }
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
-    _restore_requested_plan(state, user)
+    _restore_requested_plan(state, user, force=False)
     return identity
 
 

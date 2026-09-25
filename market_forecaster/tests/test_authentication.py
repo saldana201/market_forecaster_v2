@@ -314,7 +314,8 @@ def test_requested_pro_plan_is_restored_into_authenticated_session():
     establish_authenticated_session(state, result, provider_name="supabase")
 
     assert state["requested_plan"] == "pro"
-    assert state["account_plan_choice"] == "Pro"
+    assert state["account_plan_choice_pending"] == "Pro"
+    assert "account_plan_choice" not in state
     assert resolve_identity(state).plan == "standard"
     assert resolve_identity(state).subscription_status == "bootstrap"
 
@@ -409,3 +410,40 @@ def test_supabase_login_restores_requested_plan_from_user_metadata(monkeypatch):
 
     assert result.user.requested_plan == "pro"
     assert result.tokens is not None
+
+
+def test_token_sync_does_not_override_in_session_plan_choice():
+    class ProMetadataProvider(FakeAuthProvider):
+        def verify_token(self, access_token: str) -> AuthUser:
+            return AuthUser(
+                "subject-pro",
+                "pro@example.com",
+                "Pro User",
+                True,
+                requested_plan="pro",
+            )
+
+    state = {}
+    establish_authenticated_session(
+        state,
+        AuthResult(
+            AuthUser(
+                "subject-pro",
+                "pro@example.com",
+                "Pro User",
+                True,
+                requested_plan="pro",
+            ),
+            AuthTokens("good-a"),
+        ),
+        provider_name="fake",
+    )
+
+    # Simulate the user changing the visible tier after authentication.
+    state["requested_plan"] = "standard"
+    state.pop("account_plan_choice_pending", None)
+
+    sync_authenticated_identity(state, ProMetadataProvider())
+
+    assert state["requested_plan"] == "standard"
+    assert "account_plan_choice_pending" not in state
