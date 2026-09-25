@@ -139,13 +139,26 @@ def _register_form() -> None:
         except AuthProviderError:
             pass
 
+        message = str(exc).lower()
         retry = int(exc.retry_after_seconds or 60)
         st.session_state["account_signup_cooldown_until"] = time.time() + max(1, retry)
-        st.warning(
-            f"A signup request was already sent recently. Wait about {retry} seconds before "
-            "requesting another confirmation email. If you already confirmed this account, "
-            "use the Sign in tab instead of Create account."
-        )
+
+        if "email rate limit exceeded" in message:
+            st.error(
+                "Confirmation email sending is temporarily unavailable because the Supabase "
+                "Auth email service has reached its project sending limit."
+            )
+            st.info(
+                "This is an email-provider limit, not a problem with your password or account form. "
+                "For production signups, configure a custom SMTP provider in Supabase Authentication. "
+                "Until then, additional signup emails may not be delivered even if you retry."
+            )
+        else:
+            st.warning(
+                f"A signup request was already sent recently. Wait about {retry} seconds before "
+                "requesting another confirmation email. If you already confirmed this account, "
+                "use the Sign in tab instead of Create account."
+            )
     except AuthProviderError as exc:
         st.error(f"Account creation unavailable: {exc}")
 
