@@ -91,6 +91,7 @@ from market_forecaster.core.entitlements import can_view_research_lab, entitleme
 from market_forecaster.auth.browser_session_store import BrowserSessionError
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
 from market_forecaster.auth.persistent_session import (
+    ensure_persistent_browser_session,
     restore_persistent_browser_session,
     sync_persistent_browser_refresh_token,
 )
@@ -166,7 +167,13 @@ if MULTI_USER_ENABLED:
                 st.stop()
 
         try:
-            sync_authenticated_identity(st.session_state, provider)
+            synced_identity = sync_authenticated_identity(st.session_state, provider)
+            if synced_identity.authenticated:
+                ensure_persistent_browser_session(
+                    st.session_state,
+                    synced_identity,
+                    user_agent=browser_user_agent(),
+                )
             sync_persistent_browser_refresh_token(st.session_state)
         except InvalidToken:
             queue_browser_session_clear(st.session_state)
