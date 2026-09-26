@@ -5,6 +5,7 @@ import hashlib
 from market_forecaster.auth import browser_session_store as store
 from market_forecaster.auth.persistent_session import (
     BROWSER_SESSION_HANDLE_KEY,
+    ensure_persistent_browser_session,
     restore_persistent_browser_session,
 )
 from market_forecaster.auth.provider import AuthResult, AuthTokens, AuthUser
@@ -137,3 +138,57 @@ def test_restore_persistent_session_rotates_refresh_token(monkeypatch):
         "refresh_token": "refresh-new",
     }
     assert state["requested_plan"] == "pro"
+
+
+def test_existing_authenticated_session_is_upgraded_to_persistent_storage(monkeypatch):
+    from market_forecaster.auth import persistent_session as persistent
+    from market_forecaster.auth.session import establish_authenticated_session
+
+    captured = {}
+
+    monkeypatch.setattr(
+        persistent,
+        "create_browser_session",
+        lambda **kwargs: captured.setdefault("create", kwargs) or "opaque-handle",
+    )
+
+    # The lambda above returns the dict on first call because setdefault returns
+    # the inserted value, so use a small helper instead.
+    def fake_create(**kwargs):
+        captured["create"] = kwargs
+        return "opaque-handle"
+
+    monkeypatch.setattr(persistent, "create_browser_session", fake_create)
+
+    state = {}
+    identity = establish_authenticated_session(
+        state,
+        AuthResult(
+            user=AuthUser(
+                subject="11111111-1111-4111-8111-111111111111",
+                email="user@example.com",
+                email_confirmed=True,
+            ),
+            tokens=AuthTokens(
+                access_token="access-current",
+                refresh_token="refresh-current",
+                expires_in=3600,
+            ),
+        ),
+        provider_name="fake",
+    )
+
+    handle = ensure_persistent_browser_session(
+        state,
+        identity,
+        user_agent="Browser/1.0",
+    )
+
+    assert handle == "opaque-handle"
+    assert state[BROWSER_SESSION_HANDLE_KEY] == "opaque-handle"
+    assert captured["create"]["auth_subject"] == identity.auth_subject
+    assert captured["create"]["refresh_token"] == "refresh-current"
+    assert state["_browser_session_storage_action"] == {
+        "action": "set",
+        "value": "opaque-handle",
+    }
