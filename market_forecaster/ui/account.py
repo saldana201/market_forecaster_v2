@@ -401,6 +401,9 @@ def _signed_in_account() -> None:
         st.metric("Account storage", "Enabled" if persistence_ready else "Disabled")
 
     st.caption(f"Signed in as {profile.get('email') or '—'}")
+    st.caption(
+        "This browser stays signed in across refreshes for up to 30 days unless you sign out."
+    )
     if requested_plan and identity.subscription_status == "bootstrap":
         st.info(
             f"You selected **{requested_plan.title()}**. Current Standard access is temporary bootstrap "
