@@ -31,6 +31,11 @@ from market_forecaster.services.user_data import (
 )
 from market_forecaster.ui.billing import render_billing_panel, render_plan_selector
 from market_forecaster.ui.browser_session import browser_user_agent
+from market_forecaster.ui.design_system import (
+    render_kpi_strip,
+    render_page_header,
+    render_section_header,
+)
 
 
 def _login_form() -> None:
@@ -274,8 +279,11 @@ def _preferences_panel(identity) -> None:
         return
 
     with st.container(border=True):
-        st.markdown("### Preferences")
-        st.caption("These settings follow your account across browsers and devices.")
+        render_section_header(
+            "Preferences",
+            "Choose the defaults that should follow your account across browsers and devices.",
+            badge="Synced",
+        )
 
         current_ticker = str(preferences.get("default_ticker") or "").upper().strip()
         default_ticker = st.text_input(
@@ -333,10 +341,13 @@ def _preferences_panel(identity) -> None:
 
 def _security_panel() -> None:
     with st.container(border=True):
-        st.markdown("### Security")
+        render_section_header(
+            "Security",
+            "Manage credentials for the currently signed-in account.",
+            badge="Protected",
+        )
         st.caption(
-            "Change the password for the currently signed-in account. "
-            "Market Forecaster sends the new password directly to Supabase Auth and does not store it."
+            "Market Forecaster sends password changes directly to Supabase Auth and does not store the password."
         )
 
         new_password = st.text_input(
@@ -380,9 +391,6 @@ def _signed_in_account() -> None:
     identity = resolve_identity(st.session_state)
     profile = auth_profile(st.session_state)
 
-    st.markdown("## Your Market Forecaster Account")
-    st.caption("Authentication is active. Watchlists and portfolios can now persist securely when account storage is enabled.")
-
     persistence_ready, persistence_reason = persistence_configuration_status()
 
     requested_plan = normalize_requested_plan(st.session_state.get("requested_plan"))
@@ -390,20 +398,41 @@ def _signed_in_account() -> None:
     if identity.subscription_status == "bootstrap":
         active_access = f"{active_access} (temporary)"
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Active access", active_access)
-    with c2:
-        st.metric("Selected tier", requested_plan.title() if requested_plan else "Not selected")
-    with c3:
-        st.metric("Status", "Signed in")
-    with c4:
-        st.metric("Account storage", "Enabled" if persistence_ready else "Disabled")
+    render_page_header(
+        "Account & Membership",
+        "Manage your Market Forecaster identity, synced preferences, security, and subscription access.",
+        eyebrow="Account workspace",
+        badge=f"{identity.plan.title()} · Signed in",
+    )
+    render_kpi_strip(
+        [
+            {
+                "label": "Active access",
+                "value": active_access,
+                "caption": "Entitlements currently available",
+                "tone": "accent",
+            },
+            {
+                "label": "Selected tier",
+                "value": requested_plan.title() if requested_plan else identity.plan.title(),
+                "caption": "Requested or active subscription tier",
+            },
+            {
+                "label": "Session",
+                "value": "Persistent",
+                "caption": "Refresh-safe browser session · up to 30 days",
+                "tone": "positive",
+            },
+            {
+                "label": "Account storage",
+                "value": "Enabled" if persistence_ready else "Disabled",
+                "caption": "Synced watchlists, portfolios, history and preferences",
+                "tone": "positive" if persistence_ready else "warning",
+            },
+        ]
+    )
 
     st.caption(f"Signed in as {profile.get('email') or '—'}")
-    st.caption(
-        "This browser stays signed in across refreshes for up to 30 days unless you sign out."
-    )
     if requested_plan and identity.subscription_status == "bootstrap":
         st.info(
             f"You selected **{requested_plan.title()}**. Current Standard access is temporary bootstrap "
@@ -418,8 +447,11 @@ def _signed_in_account() -> None:
     else:
         st.caption(f"Persistent storage is not active in this deployment: {persistence_reason}")
 
+    render_section_header(
+        "Profile & identity",
+        "Verified account details used to isolate your saved Market Forecaster data.",
+    )
     with st.container(border=True):
-        st.markdown("### Account identity")
         if profile.get("display_name"):
             st.write(f"**Name:** {profile['display_name']}")
         st.write(f"**Internal user ID:** {identity.user_id}")
@@ -431,10 +463,19 @@ def _signed_in_account() -> None:
             "Browser requests cannot choose or override this ID."
         )
 
-    _preferences_panel(identity)
-    _security_panel()
+    settings_col, security_col = st.columns(2)
+    with settings_col:
+        _preferences_panel(identity)
+    with security_col:
+        _security_panel()
+
+    render_section_header(
+        "Membership & billing",
+        "Review your plan selection and subscription controls.",
+    )
     render_billing_panel()
 
+    st.markdown("---")
     if st.button("Sign out", key="account_logout", use_container_width=True):
         auth = st.session_state.get(AUTH_SESSION_KEY) or {}
         token = auth.get("access_token") if isinstance(auth, dict) else None
@@ -458,10 +499,15 @@ def render_account_screen() -> None:
         _signed_in_account()
         return
 
-    st.markdown("## Sign in or create your Market Forecaster account")
+    render_page_header(
+        "Sign in or create your account",
+        "Keep watchlists, portfolios, forecast history, and preferences synchronized across sessions and devices.",
+        eyebrow="Market Forecaster account",
+        badge="Secure account access",
+    )
     st.caption(
         "Already created or confirmed an account? Use Sign in—do not submit Create account again. "
-        "Demo remains available without an account, while signed-in accounts can persist watchlists and portfolios."
+        "Demo remains available without an account."
     )
 
     if not MULTI_USER_ENABLED:
