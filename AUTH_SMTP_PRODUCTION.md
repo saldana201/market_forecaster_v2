@@ -32,3 +32,25 @@ Do not commit SMTP passwords or app-passwords to GitHub.
 Market Forecaster detects Supabase email-rate-limit responses and explains that the
 email provider is temporarily unavailable rather than presenting the failure as a bad
 account/password request.
+
+
+## Account email operations
+
+The Account page now supports:
+
+- resend signup confirmation for an existing unconfirmed account
+- signed-in password changes through Supabase Auth
+
+Resend responses are intentionally non-enumerating. The UI does not reveal whether the
+email address exists or is already confirmed.
+
+The resend flow is still subject to Supabase Auth email rate limits, so custom SMTP is
+required for reliable production delivery.
+
+## Password recovery boundary
+
+A signed-in user can change their password directly.
+
+A full "Forgot password" recovery-email flow should not be enabled until the Streamlit
+application has a complete recovery-token return path. Do not ship a reset-email button
+that redirects users back to a page unable to consume the recovery session securely.
