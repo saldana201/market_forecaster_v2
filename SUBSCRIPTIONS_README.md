@@ -16,13 +16,23 @@ When it is true, paid feature access is resolved from `public.subscriptions`.
 
 Keep the existing Supabase settings and add:
 
+    MARKET_FORECASTER_BILLING_MODE=test       # switch to live only at production cutover
     MARKET_FORECASTER_PUBLIC_URL=https://marketforecaster.oneeightaisystems.com
-    STRIPE_SECRET_KEY=sk_live_...              # use sk_test_... during testing
+    STRIPE_SECRET_KEY=sk_test_...              # use sk_live_... only with billing mode=live
     STRIPE_STANDARD_PRICE_ID=price_...
     STRIPE_PRO_PRICE_ID=price_...
     SUBSCRIPTIONS_ENABLED=true
 
 Never commit Stripe secret keys to GitHub.
+
+Billing mode is an explicit safety boundary:
+
+- `MARKET_FORECASTER_BILLING_MODE=test` requires an `sk_test_` Stripe key.
+- `MARKET_FORECASTER_BILLING_MODE=live` requires an `sk_live_` Stripe key.
+- live mode also requires an HTTPS public return URL.
+- a mode/key mismatch blocks Checkout and blocks the Azure production deployment when subscriptions are enabled.
+
+This is designed to prevent a test activation from accidentally using live Stripe credentials.
 
 ## Supabase Edge Function
 
@@ -57,12 +67,31 @@ The signed-in Subscription panel exposes a secret-safe activation checklist show
 
 - subscription feature flag
 - persistent account storage
-- Stripe secret-key presence and test/live mode
+- explicit billing mode
+- Stripe secret-key presence and test/live mode match
 - Standard recurring-price configuration
 - Pro recurring-price configuration
 - public return URL
 
 The checklist never displays secret keys or full Stripe credentials.
 
-Use the checklist during Stripe test-mode activation before setting
-`SUBSCRIPTIONS_ENABLED=true` in production.
+It also provides **Validate Stripe recurring prices (no charge)**. That check reads
+the configured Standard and Pro Stripe Price objects and verifies that they are:
+
+- in the same test/live environment as the configured billing mode
+- active
+- recurring
+- configured with a positive amount and currency
+
+The validation does not create a Checkout Session, customer, subscription, invoice,
+or charge.
+
+Recommended activation sequence:
+
+1. Set `MARKET_FORECASTER_BILLING_MODE=test`.
+2. Configure the `sk_test_` secret and test Standard/Pro recurring Price IDs.
+3. Leave `SUBSCRIPTIONS_ENABLED=false` while reviewing the activation checklist.
+4. Run the no-charge Stripe price validation.
+5. Configure and test the signed Stripe webhook.
+6. Set `SUBSCRIPTIONS_ENABLED=true` for end-to-end test-mode Checkout acceptance.
+7. Only after test acceptance, change billing mode and credentials to live together.
