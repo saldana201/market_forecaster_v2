@@ -77,6 +77,38 @@ until Stripe test-mode validation is complete.
 
 Never store Supabase service-role or Stripe secret keys in source control.
 
+### Deployment configuration preflight
+
+The production GitHub deployment now validates the Azure App Service configuration
+**before** uploading a new release.
+
+Required non-empty settings:
+
+    MARKET_FORECASTER_SUPABASE_URL
+    MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY
+    MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY
+
+The deployment check prints only the setting names and pass/fail state. It never
+prints the stored values.
+
+The workflow also enforces the non-secret 4.1 production feature flags:
+
+    DEMO_MODE_ENABLED=true
+    MULTI_USER_ENABLED=true
+    DATABASE_PERSISTENCE_ENABLED=true
+    SHARED_CONTRACT_STORAGE_ENABLED=true
+    SHARED_AUTHORITY_ENABLED=true
+
+If SUBSCRIPTIONS_ENABLED=true, deployment additionally requires:
+
+    MARKET_FORECASTER_PUBLIC_URL
+    STRIPE_SECRET_KEY
+    STRIPE_STANDARD_PRICE_ID
+    STRIPE_PRO_PRICE_ID
+
+This prevents a release from appearing healthy while authentication persistence,
+account storage, or enabled billing is missing a required production setting.
+
 
 ### Persistent authenticated browser sessions
 
@@ -216,7 +248,8 @@ verify the trusted RPC still works before deploying the change.
 
 1. CI green.
 2. Supabase migrations applied.
-3. GitHub OIDC publisher workflow succeeds from master.
+3. Azure deployment configuration preflight passes without exposing secret values.
+4. GitHub OIDC publisher workflow succeeds from master.
 4. Run the shared refresh workflow manually once.
 5. Confirm all 14 Demo contracts exist in public.shared_forecast_contracts.
 6. Set SHARED_CONTRACT_STORAGE_ENABLED=true in Azure.
