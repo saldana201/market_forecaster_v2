@@ -11,6 +11,7 @@ from market_forecaster.services.subscriptions import (
     load_subscription,
     normalize_requested_plan,
     requested_plan_is_satisfied,
+    stripe_catalog_diagnostics,
     subscription_configuration_diagnostics,
     subscription_configuration_status,
 )
@@ -203,11 +204,40 @@ def render_upgrade_handoff() -> None:
 
 def _render_billing_activation_checklist() -> None:
     with st.expander("Billing activation checklist"):
-        for row in subscription_configuration_diagnostics():
+        checks = subscription_configuration_diagnostics()
+        for row in checks:
             icon = "✅" if row.get("ready") else "○"
             st.markdown(
                 f"{icon} **{row.get('name')}** — {row.get('detail')}"
             )
+
+        st.caption(
+            "Billing mode is an explicit safety boundary: test mode requires an sk_test_ key; "
+            "live mode requires an sk_live_ key and an HTTPS public return URL."
+        )
+
+        if st.button(
+            "Validate Stripe recurring prices (no charge)",
+            key="billing_validate_stripe_catalog",
+            use_container_width=True,
+        ):
+            with st.spinner("Checking configured Stripe prices..."):
+                st.session_state["billing_catalog_validation"] = (
+                    stripe_catalog_diagnostics()
+                )
+
+        catalog_rows = st.session_state.get("billing_catalog_validation")
+        if isinstance(catalog_rows, list):
+            st.markdown("**Stripe catalog validation**")
+            for row in catalog_rows:
+                icon = "✅" if row.get("ready") else "⚠️"
+                plan = str(row.get("plan") or "").title()
+                st.markdown(f"{icon} **{plan}** — {row.get('detail')}")
+            st.caption(
+                "This check reads Stripe Price metadata only. It does not create a Checkout "
+                "Session, customer, subscription, invoice, or charge."
+            )
+
         st.caption(
             "The Stripe webhook signing secret is stored in Supabase Edge Function secrets "
             "and is verified separately from the Streamlit application."

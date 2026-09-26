@@ -156,3 +156,65 @@ def test_readiness_fails_when_demo_universe_is_incomplete(monkeypatch):
     assert report["ready"] is False
     demo = next(row for row in report["checks"] if row["name"] == "demo_contracts")
     assert demo["status"] == "FAIL"
+
+
+
+def test_readiness_requires_valid_stripe_catalog_when_billing_enabled(monkeypatch):
+    monkeypatch.setattr(readiness, "MULTI_USER_ENABLED", False)
+    monkeypatch.setattr(readiness, "DATABASE_PERSISTENCE_ENABLED", False)
+    monkeypatch.setattr(readiness, "SHARED_CONTRACT_STORAGE_ENABLED", False)
+    monkeypatch.setattr(readiness, "SHARED_AUTHORITY_ENABLED", False)
+    monkeypatch.setattr(readiness, "SUBSCRIPTIONS_ENABLED", True)
+
+    monkeypatch.setattr(readiness, "auth_configuration_status", lambda: (False, "disabled"))
+    monkeypatch.setattr(
+        readiness,
+        "browser_session_configuration_status",
+        lambda: (False, "disabled"),
+    )
+    monkeypatch.setattr(readiness, "persistence_configuration_status", lambda: (False, "disabled"))
+    monkeypatch.setattr(readiness, "shared_read_configuration_status", lambda: (False, "disabled"))
+    monkeypatch.setattr(
+        readiness,
+        "shared_authority_read_configuration_status",
+        lambda: (False, "disabled"),
+    )
+    monkeypatch.setattr(
+        readiness,
+        "subscription_configuration_status",
+        lambda: (True, "ready"),
+    )
+    monkeypatch.setattr(
+        readiness,
+        "stripe_catalog_status",
+        lambda: (False, "Pro: price is inactive"),
+    )
+    monkeypatch.setattr(
+        readiness,
+        "demo_cache_status",
+        lambda: [
+            {"ticker": f"T{i}", "available": True, "source": "local_cache"}
+            for i in range(14)
+        ],
+    )
+
+    class Settings:
+        rate_limit_requests = 30
+        rate_limit_window_seconds = 60
+        shared_rate_limit_enabled = False
+
+    monkeypatch.setattr(readiness, "load_settings", lambda: Settings())
+    monkeypatch.setattr(
+        readiness.SharedRateLimiter,
+        "configured",
+        lambda self: (False, "disabled"),
+    )
+
+    report = readiness.evaluate_readiness()
+
+    assert report["ready"] is False
+    catalog = next(
+        row for row in report["checks"] if row["name"] == "stripe_price_catalog"
+    )
+    assert catalog["status"] == "FAIL"
+    assert "inactive" in catalog["detail"]

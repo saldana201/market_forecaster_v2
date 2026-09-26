@@ -16,6 +16,11 @@ from market_forecaster.services.user_data import client_for_state, verified_owne
 ENTITLED_STATUSES = {"trialing", "active", "past_due"}
 PAID_PLANS = {"standard", "pro"}
 PLAN_RANK = {"demo": 0, "standard": 1, "pro": 2}
+BILLING_MODES = {"test", "live"}
+
+
+def billing_mode() -> str:
+    return str(os.getenv("MARKET_FORECASTER_BILLING_MODE", "test") or "test").strip().lower()
 
 
 def _public_url() -> str:
@@ -42,6 +47,7 @@ def _price_id(plan: str) -> str:
 def subscription_configuration_diagnostics() -> list[dict]:
     """Return a secret-safe checklist for subscription activation."""
     secret = _stripe_secret()
+    mode = billing_mode()
     if secret.startswith("sk_test_"):
         stripe_mode = "test"
     elif secret.startswith("sk_live_"):
@@ -51,7 +57,19 @@ def subscription_configuration_diagnostics() -> list[dict]:
     else:
         stripe_mode = "missing"
 
+    mode_valid = mode in BILLING_MODES
+    secret_matches_mode = bool(secret) and mode_valid and stripe_mode == mode
+    public_url = _public_url()
+    public_url_ready = bool(public_url) and (
+        mode != "live" or public_url.startswith("https://")
+    )
+
     return [
+        {
+            "name": "Billing mode",
+            "ready": mode_valid,
+            "detail": mode if mode_valid else "invalid",
+        },
         {
             "name": "Subscription feature flag",
             "ready": bool(SUBSCRIPTIONS_ENABLED),
@@ -64,8 +82,14 @@ def subscription_configuration_diagnostics() -> list[dict]:
         },
         {
             "name": "Stripe secret key",
-            "ready": bool(secret),
-            "detail": stripe_mode,
+            "ready": secret_matches_mode,
+            "detail": (
+                stripe_mode
+                if secret_matches_mode
+                else "missing"
+                if not secret
+                else f"{stripe_mode} key does not match {mode or 'configured'} mode"
+            ),
         },
         {
             "name": "Standard recurring price",
@@ -79,8 +103,14 @@ def subscription_configuration_diagnostics() -> list[dict]:
         },
         {
             "name": "Public return URL",
-            "ready": bool(_public_url()),
-            "detail": _public_url() or "missing",
+            "ready": public_url_ready,
+            "detail": (
+                public_url
+                if public_url_ready
+                else "missing"
+                if not public_url
+                else "live billing requires an https:// public URL"
+            ),
         },
     ]
 
@@ -93,15 +123,133 @@ def subscription_configuration_status() -> tuple[bool, str]:
 
     name = str(first_missing["name"])
     detail = str(first_missing["detail"])
+    if name == "Billing mode":
+        return False, "MARKET_FORECASTER_BILLING_MODE must be test or live."
     if name == "Subscription feature flag":
         return False, "SUBSCRIPTIONS_ENABLED is false."
     if name == "Persistent account storage":
         return False, "DATABASE_PERSISTENCE_ENABLED must be enabled first."
     if name == "Stripe secret key":
-        return False, "STRIPE_SECRET_KEY is not configured."
+        if not _stripe_secret():
+            return False, "STRIPE_SECRET_KEY is not configured."
+        return False, "Stripe secret key does not match MARKET_FORECASTER_BILLING_MODE."
     if name in {"Standard recurring price", "Pro recurring price"}:
         return False, "Stripe Standard or Pro price ID is not configured."
     return False, f"{name} is not ready ({detail})."
+
+
+def stripe_catalog_diagnostics() -> list[dict]:
+    """Validate configured Stripe recurring prices without creating a charge."""
+    secret = _stripe_secret()
+    mode = billing_mode()
+    if not secret:
+        return [
+            {
+                "plan": plan,
+                "ready": False,
+                "detail": "Stripe secret key is missing.",
+            }
+            for plan in sorted(PAID_PLANS)
+        ]
+    if mode not in BILLING_MODES:
+        return [
+            {
+                "plan": plan,
+                "ready": False,
+                "detail": "Billing mode is invalid.",
+            }
+            for plan in sorted(PAID_PLANS)
+        ]
+
+    client = StripeBillingClient(secret)
+    rows: list[dict] = []
+    for plan in ("standard", "pro"):
+        price_id = _price_id(plan)
+        if not price_id:
+            rows.append(
+                {
+                    "plan": plan,
+                    "ready": False,
+                    "detail": "Price ID is missing.",
+                }
+            )
+            continue
+
+        try:
+            price = client.retrieve_price(price_id)
+        except BillingError as exc:
+            rows.append(
+                {
+                    "plan": plan,
+                    "ready": False,
+                    "detail": str(exc),
+                }
+            )
+            continue
+
+        livemode = bool(price.get("livemode"))
+        expected_livemode = mode == "live"
+        active = bool(price.get("active"))
+        recurring = price.get("recurring")
+        price_type = str(price.get("type") or "")
+        interval = (
+            str(recurring.get("interval") or "")
+            if isinstance(recurring, dict)
+            else ""
+        )
+        currency = str(price.get("currency") or "").upper()
+        unit_amount = price.get("unit_amount")
+        try:
+            amount_value = int(unit_amount)
+        except Exception:
+            amount_value = -1
+
+        ready = (
+            livemode == expected_livemode
+            and active
+            and price_type == "recurring"
+            and bool(interval)
+            and bool(currency)
+            and amount_value > 0
+        )
+
+        issues: list[str] = []
+        if livemode != expected_livemode:
+            issues.append("Stripe price environment does not match billing mode")
+        if not active:
+            issues.append("price is inactive")
+        if price_type != "recurring" or not interval:
+            issues.append("price is not recurring")
+        if not currency or amount_value <= 0:
+            issues.append("price amount/currency is invalid")
+
+        amount_text = (
+            f"{currency} {amount_value / 100:.2f}/{interval}"
+            if amount_value > 0 and currency and interval
+            else "invalid recurring price"
+        )
+        rows.append(
+            {
+                "plan": plan,
+                "ready": ready,
+                "detail": amount_text if ready else "; ".join(issues),
+                "price_id": price_id,
+                "livemode": livemode,
+            }
+        )
+
+    return rows
+
+
+def stripe_catalog_status() -> tuple[bool, str]:
+    rows = stripe_catalog_diagnostics()
+    failed = [row for row in rows if not row.get("ready")]
+    if not failed:
+        return True, "ready"
+    return False, "; ".join(
+        f"{str(row.get('plan') or '').title()}: {row.get('detail')}"
+        for row in failed
+    )
 
 
 def load_subscription(

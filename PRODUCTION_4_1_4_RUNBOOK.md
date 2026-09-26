@@ -72,8 +72,13 @@ Core:
 Billing remains separately controlled:
 
     SUBSCRIPTIONS_ENABLED=false
+    MARKET_FORECASTER_BILLING_MODE=test
 
 until Stripe test-mode validation is complete.
+
+Billing mode is a safety boundary: test mode requires an `sk_test_` key; live mode
+requires an `sk_live_` key and an HTTPS public return URL. The Azure deployment
+preflight blocks a mode/key mismatch when subscriptions are enabled.
 
 Never store Supabase service-role or Stripe secret keys in source control.
 
@@ -224,6 +229,7 @@ It checks:
 - shared Forecast Authority
 - all 14 Demo contracts
 - Stripe subscription configuration
+- Stripe Standard/Pro recurring-price catalog when billing is enabled or required
 - shared API rate limiting
 
 Stripe is a warning while subscriptions are intentionally disabled.
@@ -231,6 +237,10 @@ Stripe is a warning while subscriptions are intentionally disabled.
 For a paid-public-launch gate, require billing too:
 
     python -m market_forecaster.scripts.production_readiness --strict --require-billing
+
+That mode also performs a no-charge Stripe catalog validation and requires both
+configured Price objects to match the selected test/live environment, be active,
+recurring, and have a positive amount/currency.
 
 A non-zero exit means at least one required production dependency is not ready.
 

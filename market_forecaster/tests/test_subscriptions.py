@@ -9,7 +9,9 @@ from market_forecaster.services.subscriptions import (
     effective_plan,
     normalize_requested_plan,
     requested_plan_is_satisfied,
+    stripe_catalog_diagnostics,
     subscription_configuration_diagnostics,
+    subscription_configuration_status,
 )
 
 
@@ -149,3 +151,109 @@ def test_subscription_diagnostics_identify_missing_activation_pieces(monkeypatch
     assert by_name["Stripe secret key"]["ready"] is False
     assert by_name["Standard recurring price"]["ready"] is False
     assert by_name["Pro recurring price"]["ready"] is False
+
+
+
+def test_billing_mode_rejects_live_key_in_test_mode(monkeypatch):
+    monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_ENABLED", True)
+    monkeypatch.setattr(subscriptions, "DATABASE_PERSISTENCE_ENABLED", True)
+    monkeypatch.setenv("MARKET_FORECASTER_BILLING_MODE", "test")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_do-not-charge")
+    monkeypatch.setenv("STRIPE_STANDARD_PRICE_ID", "price_standard")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_pro")
+    monkeypatch.setenv(
+        "MARKET_FORECASTER_PUBLIC_URL",
+        "https://marketforecaster.oneeightaisystems.com",
+    )
+
+    ready, reason = subscription_configuration_status()
+
+    assert ready is False
+    assert "does not match" in reason
+    assert "do-not-charge" not in reason
+
+
+def test_live_billing_requires_https_public_url(monkeypatch):
+    monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_ENABLED", True)
+    monkeypatch.setattr(subscriptions, "DATABASE_PERSISTENCE_ENABLED", True)
+    monkeypatch.setenv("MARKET_FORECASTER_BILLING_MODE", "live")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_example")
+    monkeypatch.setenv("STRIPE_STANDARD_PRICE_ID", "price_standard")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_pro")
+    monkeypatch.setenv("MARKET_FORECASTER_PUBLIC_URL", "http://example.com")
+
+    rows = subscription_configuration_diagnostics()
+    by_name = {row["name"]: row for row in rows}
+
+    assert by_name["Public return URL"]["ready"] is False
+    assert "https://" in by_name["Public return URL"]["detail"]
+
+
+def test_stripe_price_retrieval_uses_get(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "id": "price_standard",
+                    "active": True,
+                    "type": "recurring",
+                    "recurring": {"interval": "month"},
+                    "currency": "usd",
+                    "unit_amount": 1999,
+                    "livemode": False,
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        captured["method"] = req.get_method()
+        captured["url"] = req.full_url
+        captured["authorization"] = req.headers["Authorization"]
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.billing.stripe_client.request.urlopen",
+        fake_urlopen,
+    )
+
+    client = StripeBillingClient("sk_test_example")
+    price = client.retrieve_price("price_standard")
+
+    assert price["active"] is True
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/v1/prices/price_standard")
+    assert captured["authorization"] == "Bearer sk_test_example"
+
+
+def test_stripe_catalog_validation_is_secret_safe(monkeypatch):
+    monkeypatch.setenv("MARKET_FORECASTER_BILLING_MODE", "test")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_do-not-expose-this-value")
+    monkeypatch.setenv("STRIPE_STANDARD_PRICE_ID", "price_standard")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_pro")
+
+    def fake_retrieve(self, price_id):
+        amount = 1999 if price_id == "price_standard" else 3999
+        return {
+            "id": price_id,
+            "active": True,
+            "type": "recurring",
+            "recurring": {"interval": "month"},
+            "currency": "usd",
+            "unit_amount": amount,
+            "livemode": False,
+        }
+
+    monkeypatch.setattr(StripeBillingClient, "retrieve_price", fake_retrieve)
+
+    rows = stripe_catalog_diagnostics()
+
+    assert all(row["ready"] for row in rows)
+    assert rows[0]["detail"].startswith("USD ")
+    assert "do-not-expose" not in str(rows)

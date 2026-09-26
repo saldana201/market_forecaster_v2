@@ -20,16 +20,26 @@ class StripeBillingClient:
         if not self.secret_key:
             raise BillingError("Stripe secret key is not configured.")
 
-    def _post(self, path: str, fields: dict[str, str]) -> dict:
-        data = parse.urlencode(fields).encode("utf-8")
+    def _request_json(
+        self,
+        path: str,
+        *,
+        method: str,
+        fields: dict[str, str] | None = None,
+    ) -> dict:
+        data = None
+        headers = {
+            "Authorization": f"Bearer {self.secret_key}",
+        }
+        if fields is not None:
+            data = parse.urlencode(fields).encode("utf-8")
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+
         req = request.Request(
             f"https://api.stripe.com/v1/{path.lstrip('/')}",
             data=data,
-            headers={
-                "Authorization": f"Bearer {self.secret_key}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            method="POST",
+            headers=headers,
+            method=method,
         )
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
@@ -53,6 +63,18 @@ class StripeBillingClient:
             raise BillingError(f"Stripe request failed: {message}") from exc
         except error.URLError as exc:
             raise BillingError(f"Stripe is unavailable: {exc.reason}") from exc
+
+    def _post(self, path: str, fields: dict[str, str]) -> dict:
+        return self._request_json(path, method="POST", fields=fields)
+
+    def _get(self, path: str) -> dict:
+        return self._request_json(path, method="GET")
+
+    def retrieve_price(self, price_id: str) -> dict:
+        price_id = str(price_id or "").strip()
+        if not price_id:
+            raise BillingError("Stripe price ID is not configured.")
+        return self._get(f"prices/{parse.quote(price_id, safe='')}")
 
     def create_checkout_session(
         self,
