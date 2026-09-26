@@ -11,6 +11,11 @@ def test_readiness_passes_required_components_and_warns_on_disabled_billing(monk
     monkeypatch.setattr(readiness, "SUBSCRIPTIONS_ENABLED", False)
 
     monkeypatch.setattr(readiness, "auth_configuration_status", lambda: (True, "ready"))
+    monkeypatch.setattr(
+        readiness,
+        "browser_session_configuration_status",
+        lambda: (True, "ready"),
+    )
     monkeypatch.setattr(readiness, "persistence_configuration_status", lambda: (True, "ready"))
     monkeypatch.setattr(readiness, "shared_read_configuration_status", lambda: (True, "ready"))
     monkeypatch.setattr(
@@ -60,6 +65,11 @@ def test_readiness_can_require_billing(monkeypatch):
     monkeypatch.setattr(readiness, "SUBSCRIPTIONS_ENABLED", False)
 
     monkeypatch.setattr(readiness, "auth_configuration_status", lambda: (False, "disabled"))
+    monkeypatch.setattr(
+        readiness,
+        "browser_session_configuration_status",
+        lambda: (False, "disabled"),
+    )
     monkeypatch.setattr(readiness, "persistence_configuration_status", lambda: (False, "disabled"))
     monkeypatch.setattr(readiness, "shared_read_configuration_status", lambda: (False, "disabled"))
     monkeypatch.setattr(
