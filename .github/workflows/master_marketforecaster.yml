@@ -100,6 +100,9 @@ jobs:
             --settings \
               SCM_DO_BUILD_DURING_DEPLOYMENT=true \
               ENABLE_ORYX_BUILD=true \
+              DEMO_MODE_ENABLED=true \
+              MULTI_USER_ENABLED=true \
+              DATABASE_PERSISTENCE_ENABLED=true \
               SHARED_CONTRACT_STORAGE_ENABLED=true \
               SHARED_AUTHORITY_ENABLED=true
 
@@ -121,6 +124,51 @@ jobs:
             --query defaultHostName -o tsv)"
           echo "APP_HOST=$APP_HOST" >> "$GITHUB_ENV"
           echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> "$GITHUB_ENV"
+
+      - name: Validate Azure production configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          require_setting() {
+            local name="$1"
+            local value
+            value="$(az webapp config appsettings list \
+              --resource-group "$RESOURCE_GROUP" \
+              --name marketforecaster \
+              --query "[?name=='$name'].value | [0]" \
+              -o tsv)"
+
+            if [ -z "$value" ]; then
+              echo "::error::Required Azure App Service setting '$name' is missing or empty."
+              return 1
+            fi
+
+            # Intentionally print only the setting name, never the value.
+            echo "Configured: $name"
+          }
+
+          require_setting "MARKET_FORECASTER_SUPABASE_URL"
+          require_setting "MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY"
+          require_setting "MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY"
+
+          subscriptions_enabled="$(az webapp config appsettings list \
+            --resource-group "$RESOURCE_GROUP" \
+            --name marketforecaster \
+            --query "[?name=='SUBSCRIPTIONS_ENABLED'].value | [0]" \
+            -o tsv)"
+
+          if [ "$(printf '%s' "$subscriptions_enabled" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+            echo "Subscriptions are enabled; validating Stripe production settings."
+            require_setting "MARKET_FORECASTER_PUBLIC_URL"
+            require_setting "STRIPE_SECRET_KEY"
+            require_setting "STRIPE_STANDARD_PRICE_ID"
+            require_setting "STRIPE_PRO_PRICE_ID"
+          else
+            echo "Subscriptions are not enabled; Stripe settings remain non-blocking for this deployment."
+          fi
+
+          echo "Azure production configuration preflight passed."
 
       - name: Wait for App Service configuration restart to settle
         shell: bash
