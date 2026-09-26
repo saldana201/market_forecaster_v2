@@ -6,6 +6,11 @@ import time
 import streamlit as st
 
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
+from market_forecaster.auth.browser_session_store import BrowserSessionError
+from market_forecaster.auth.persistent_session import (
+    issue_persistent_browser_session,
+    revoke_persistent_browser_session,
+)
 from market_forecaster.auth.provider import AuthProviderError, InvalidCredentials, RateLimited
 from market_forecaster.auth.session import (
     AUTH_SESSION_KEY,
@@ -25,6 +30,7 @@ from market_forecaster.services.user_data import (
     save_user_preferences,
 )
 from market_forecaster.ui.billing import render_billing_panel, render_plan_selector
+from market_forecaster.ui.browser_session import browser_user_agent
 
 
 def _login_form() -> None:
@@ -50,6 +56,17 @@ def _login_form() -> None:
             result,
             provider_name=provider.name,
         )
+        try:
+            issue_persistent_browser_session(
+                st.session_state,
+                result,
+                user_agent=browser_user_agent(),
+            )
+        except BrowserSessionError:
+            st.session_state["auth_notice"] = (
+                "Signed in, but persistent browser-session storage is temporarily unavailable."
+            )
+        st.query_params["view"] = "account"
         st.success("Signed in.")
         st.rerun()
     except InvalidCredentials:
@@ -176,6 +193,17 @@ def _register_form() -> None:
             result,
             provider_name=provider.name,
         )
+        try:
+            issue_persistent_browser_session(
+                st.session_state,
+                result,
+                user_agent=browser_user_agent(),
+            )
+        except BrowserSessionError:
+            st.session_state["auth_notice"] = (
+                "Account created, but persistent browser-session storage is temporarily unavailable."
+            )
+        st.query_params["view"] = "account"
         st.success("Account created and signed in.")
         st.rerun()
     except RateLimited as exc:
@@ -191,7 +219,18 @@ def _register_form() -> None:
                     existing,
                     provider_name=provider.name,
                 )
+                try:
+                    issue_persistent_browser_session(
+                        st.session_state,
+                        existing,
+                        user_agent=browser_user_agent(),
+                    )
+                except BrowserSessionError:
+                    st.session_state["auth_notice"] = (
+                        "Signed in, but persistent browser-session storage is temporarily unavailable."
+                    )
                 st.session_state.pop("account_signup_cooldown_until", None)
+                st.query_params["view"] = "account"
                 st.success("That account already exists. Signed you in instead.")
                 st.rerun()
                 return
@@ -401,7 +440,12 @@ def _signed_in_account() -> None:
                 get_auth_provider().logout(str(token))
         except AuthProviderError:
             pass
+        revoke_persistent_browser_session(st.session_state)
         clear_authenticated_session(st.session_state)
+        try:
+            del st.query_params["view"]
+        except Exception:
+            pass
         st.rerun()
 
 
