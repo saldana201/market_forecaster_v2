@@ -53,6 +53,38 @@ def issue_persistent_browser_session(
     return handle
 
 
+def ensure_persistent_browser_session(
+    state: MutableMapping,
+    identity: AppIdentity,
+    *,
+    user_agent: str,
+) -> str | None:
+    """Upgrade an already-authenticated Streamlit session into refresh-safe storage."""
+    existing_handle = str(state.get(BROWSER_SESSION_HANDLE_KEY) or "")
+    if existing_handle:
+        return existing_handle
+
+    if not identity.authenticated or not identity.auth_subject:
+        return None
+
+    auth = state.get(AUTH_SESSION_KEY)
+    if not isinstance(auth, dict):
+        return None
+    refresh_token = str(auth.get("refresh_token") or "")
+    if not refresh_token:
+        return None
+
+    handle = create_browser_session(
+        auth_subject=identity.auth_subject,
+        refresh_token=refresh_token,
+        user_agent=user_agent,
+    )
+    state[BROWSER_SESSION_HANDLE_KEY] = handle
+    state[BROWSER_SESSION_REFRESH_HASH_KEY] = _token_hash(refresh_token)
+    queue_browser_session_set(state, handle)
+    return handle
+
+
 def restore_persistent_browser_session(
     state: MutableMapping,
     provider: AuthProvider,
