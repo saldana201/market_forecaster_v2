@@ -3,6 +3,12 @@ from __future__ import annotations
 
 import streamlit as st
 
+from market_forecaster.ui.design_system import (
+    render_kpi_strip,
+    render_page_header,
+    render_section_header,
+)
+
 
 def _plan_card(
     *,
@@ -42,10 +48,42 @@ def _go_to_account(plan: str) -> None:
 
 
 def render_demo_plans() -> None:
-    st.markdown("## Choose how far you want to take Market Forecaster")
-    st.caption(
-        "Forecast quality stays consistent across plans. Paid tiers expand the markets you can analyze, "
-        "what you can save, and how deeply you can research."
+    render_page_header(
+        "Choose your Market Forecaster workspace",
+        "Forecast quality stays consistent across plans. Paid tiers expand the markets you can analyze, what you can save, and how deeply you can research.",
+        eyebrow="Plans & access",
+        badge="Demo · Standard · Pro",
+    )
+    render_kpi_strip(
+        [
+            {
+                "label": "Forecast quality",
+                "value": "Same",
+                "caption": "Demo forecasts are not intentionally degraded",
+                "tone": "positive",
+            },
+            {
+                "label": "Forecast horizons",
+                "value": "1D–20D",
+                "caption": "Available across all product tiers",
+            },
+            {
+                "label": "Account persistence",
+                "value": "Standard+",
+                "caption": "Watchlists, portfolios, history and preferences",
+                "tone": "accent",
+            },
+            {
+                "label": "Research Lab",
+                "value": "Pro",
+                "caption": "Advanced model and calibration diagnostics",
+            },
+        ]
+    )
+
+    render_section_header(
+        "Compare plans",
+        "Choose based on ticker access, persistence, and research depth—not lower forecast quality.",
     )
 
     demo, standard, pro = st.columns(3)
