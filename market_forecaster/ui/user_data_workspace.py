@@ -31,10 +31,20 @@ from market_forecaster.services.user_data import (
     remove_watchlist_item,
     save_primary_portfolio,
 )
+from market_forecaster.ui.design_system import (
+    render_kpi_strip,
+    render_page_header,
+    render_section_header,
+)
 from market_forecaster.ui.market_cards import (
     group_watchlist_symbols,
     render_horizon_selector,
     render_watchlist_market_card,
+)
+from market_forecaster.ui.portfolio_cards import (
+    build_portfolio_snapshot,
+    render_portfolio_position_card,
+    render_sector_allocation,
 )
 
 
@@ -110,9 +120,11 @@ def _persistent_client():
 
 def render_persistent_watchlist(active_ticker: str) -> None:
     client, identity = _persistent_client()
-    st.markdown("## My Watchlist")
-    st.caption(
-        "Saved to your account, grouped by sector, and rendered with the same forecast cards used in Market Explorer."
+    render_page_header(
+        "My Watchlist",
+        "Saved to your account, grouped by sector, and rendered with the same forecast cards used in Market Explorer.",
+        eyebrow="Market workspace",
+        badge=f"{identity.plan.title()} · Persistent",
     )
     if not can_save_watchlist(identity):
         st.info("Persistent watchlists require an active Standard or Pro subscription.")
@@ -129,13 +141,26 @@ def render_persistent_watchlist(active_ticker: str) -> None:
 
     rules = entitlements_for(identity)
     symbols = [str(row.get("ticker") or "").upper() for row in items]
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Tracked markets", len(symbols))
-    with c2:
-        st.metric("Plan capacity", f"{len(symbols)} / {rules.watchlist_limit}")
-    with c3:
-        st.metric("Storage", "Account")
+    render_kpi_strip(
+        [
+            {
+                "label": "Tracked markets",
+                "value": str(len(symbols)),
+                "caption": "Saved to this account",
+                "tone": "accent",
+            },
+            {
+                "label": "Plan capacity",
+                "value": f"{len(symbols)} / {rules.watchlist_limit}",
+                "caption": f"{identity.plan.title()} watchlist allowance",
+            },
+            {
+                "label": "Storage",
+                "value": "Account",
+                "caption": "Persistent across sessions and devices",
+            },
+        ]
+    )
 
     ticker = str(active_ticker or "").upper().strip()
     if ticker and ticker not in symbols:
@@ -190,8 +215,10 @@ def render_persistent_watchlist(active_ticker: str) -> None:
     }
 
     for sector, rows in groups.items():
-        st.markdown(f"### {sector}")
-        st.caption(f"{len(rows)} tracked market{'s' if len(rows) != 1 else ''}")
+        render_section_header(
+            sector,
+            f"{len(rows)} tracked market{'s' if len(rows) != 1 else ''}",
+        )
 
         cols = st.columns(3)
         for idx, meta in enumerate(rows):
@@ -233,8 +260,12 @@ def render_persistent_watchlist(active_ticker: str) -> None:
 
 def render_persistent_portfolio() -> None:
     client, identity = _persistent_client()
-    st.markdown("## My Portfolio")
-    st.caption("Holdings and cost basis are saved to your authenticated account.")
+    render_page_header(
+        "My Portfolio",
+        "A live account view of holdings, cost basis, allocation, unrealized performance, and forward forecast outlook.",
+        eyebrow="Portfolio intelligence",
+        badge=f"{identity.plan.title()} · Persistent",
+    )
     if not can_save_portfolio(identity):
         st.info("Persistent portfolios require an active Standard or Pro subscription.")
         return
@@ -250,14 +281,103 @@ def render_persistent_portfolio() -> None:
 
     cash = float(portfolio.get("cash") or 0.0)
     rules = entitlements_for(identity)
+    demo_map = {row["ticker"]: row for row in demo_cache_status()}
+    symbols = [str(row.get("ticker") or "").upper() for row in positions]
+    status_map = {
+        symbol: _contract_status_for_symbol(identity, symbol, demo_map)
+        for symbol in symbols
+    }
+    snapshot = build_portfolio_snapshot(
+        positions,
+        cash,
+        status_map,
+        cost_key="avg_cost",
+    )
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Cash", _money(cash))
-    with c2:
-        st.metric("Positions", f"{len(positions)} / {rules.positions_per_portfolio}")
-    with c3:
-        st.metric("Storage", "Account")
+    pnl_tone = "positive" if snapshot["unrealized"] > 0 else (
+        "negative" if snapshot["unrealized"] < 0 else "neutral"
+    )
+    return_tone = "positive" if snapshot["return_pct"] > 0 else (
+        "negative" if snapshot["return_pct"] < 0 else "neutral"
+    )
+    render_kpi_strip(
+        [
+            {
+                "label": "Portfolio value",
+                "value": _money(snapshot["portfolio_value"]),
+                "caption": "Cash + marked holdings",
+                "tone": "accent",
+            },
+            {
+                "label": "Invested capital",
+                "value": _money(snapshot["invested_capital"]),
+                "caption": "Absolute cost basis in open positions",
+            },
+            {
+                "label": "Unrealized P/L",
+                "value": _money(snapshot["unrealized"]),
+                "caption": "Open-position profit / loss",
+                "tone": pnl_tone,
+            },
+            {
+                "label": "Open return",
+                "value": f"{snapshot['return_pct']:+.1f}%",
+                "caption": "Unrealized P/L ÷ invested capital",
+                "tone": return_tone,
+            },
+            {
+                "label": "Cash",
+                "value": _money(snapshot["cash"]),
+                "caption": f"{snapshot['cash_pct']:.1f}% of portfolio value",
+            },
+            {
+                "label": "Positions",
+                "value": f"{len(positions)} / {rules.positions_per_portfolio}",
+                "caption": f"{identity.plan.title()} position capacity",
+            },
+        ]
+    )
+
+    if positions:
+        allocation_col, outlook_col = st.columns([2, 3])
+        with allocation_col:
+            render_section_header(
+                "Sector allocation",
+                "Current gross market exposure by sector.",
+            )
+            render_sector_allocation(snapshot)
+        with outlook_col:
+            render_section_header(
+                "Forecast horizon",
+                "Use one horizon across every position card.",
+            )
+            horizon_days = render_horizon_selector(key="portfolio_horizon")
+
+        render_section_header(
+            "Position outlook",
+            "Market value, open P/L, allocation, and forward Forecast Contract signals.",
+            badge=f"{horizon_days}D",
+        )
+        cols = st.columns(3)
+        for idx, row in enumerate(snapshot["positions"]):
+            with cols[idx % 3]:
+                opened = render_portfolio_position_card(
+                    row,
+                    horizon_days=horizon_days,
+                    key_prefix="persistent_portfolio",
+                    selected=row["ticker"] == str(st.session_state.get("ticker") or "").upper(),
+                )
+                if opened:
+                    st.session_state["ticker"] = row["ticker"]
+                    st.rerun()
+    else:
+        horizon_days = 10
+        with st.container(border=True):
+            st.markdown("### Build your portfolio")
+            st.caption(
+                "Add a ticker, quantity, and average cost below. Once saved, Portfolio will calculate "
+                "allocation, market value, open P/L, and multi-horizon forecast outlook."
+            )
 
     frame = pd.DataFrame(
         [
@@ -271,8 +391,11 @@ def render_persistent_portfolio() -> None:
         columns=["ticker", "quantity", "avg_cost"],
     )
 
+    render_section_header(
+        "Manage holdings",
+        "Update cash, quantities, or average cost. Saving recalculates the portfolio dashboard.",
+    )
     with st.container(border=True):
-        st.markdown("### Edit portfolio")
         cash_value = st.number_input(
             "Cash / unallocated capital",
             min_value=0.0,
@@ -332,3 +455,4 @@ def render_persistent_portfolio() -> None:
                 st.rerun()
             except (PersistenceError, ValueError) as exc:
                 st.error(str(exc))
+
