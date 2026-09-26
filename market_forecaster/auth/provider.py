@@ -70,6 +70,9 @@ class AuthProvider(Protocol):
     def login(self, email: str, password: str) -> AuthResult:
         ...
 
+    def refresh_session(self, refresh_token: str) -> AuthResult:
+        ...
+
     def resend_confirmation(self, email: str) -> None:
         ...
 
