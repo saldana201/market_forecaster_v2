@@ -180,6 +180,18 @@ class SupabaseAuthProvider:
             requires_email_confirmation=False,
         )
 
+    def refresh_session(self, refresh_token: str) -> AuthResult:
+        result = self._request(
+            "/auth/v1/token?grant_type=refresh_token",
+            method="POST",
+            payload={"refresh_token": str(refresh_token or "").strip()},
+        )
+        return AuthResult(
+            user=self._user(result.get("user")),
+            tokens=self._tokens(result),
+            requires_email_confirmation=False,
+        )
+
     def resend_confirmation(self, email: str) -> None:
         self._request(
             "/auth/v1/resend",
