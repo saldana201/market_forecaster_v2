@@ -76,6 +76,7 @@ def establish_authenticated_session(
     *,
     provider_name: str,
     plan: str = "standard",
+    restore_requested_plan_force: bool = True,
 ) -> AppIdentity:
     if result.tokens is None or not result.tokens.access_token:
         raise InvalidToken("Authentication completed without an active access token.")
@@ -100,7 +101,11 @@ def establish_authenticated_session(
         "email_confirmed": result.user.email_confirmed,
     }
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
-    _restore_requested_plan(state, result.user, force=True)
+    _restore_requested_plan(
+        state,
+        result.user,
+        force=restore_requested_plan_force,
+    )
     return identity
 
 
@@ -133,8 +138,8 @@ def sync_authenticated_identity(
             result,
             provider_name=provider.name,
             plan=plan,
+            restore_requested_plan_force=False,
         )
-        _restore_requested_plan(state, result.user, force=False)
         return identity
     except AuthProviderError:
         # Provider/network outages should not silently destroy a valid local
