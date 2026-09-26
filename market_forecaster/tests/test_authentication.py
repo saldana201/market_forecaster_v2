@@ -46,6 +46,12 @@ class FakeAuthProvider:
             tokens=AuthTokens("good-a"),
         )
 
+    def resend_confirmation(self, email: str) -> None:
+        return None
+
+    def update_password(self, access_token: str, new_password: str) -> AuthUser:
+        return AuthUser("subject-login", "test@example.com", "Test User", True)
+
     def logout(self, access_token: str) -> None:
         return None
 
@@ -447,3 +453,91 @@ def test_token_sync_does_not_override_in_session_plan_choice():
 
     assert state["requested_plan"] == "standard"
     assert "account_plan_choice_pending" not in state
+
+
+def test_supabase_resend_confirmation_uses_non_authenticated_signup_endpoint(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(req, timeout):
+        import json
+        captured["url"] = req.full_url
+        captured["method"] = req.method
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["authorization"] = req.headers.get("Authorization")
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        fake_urlopen,
+    )
+
+    provider.resend_confirmation("person@example.com")
+
+    assert captured["url"].endswith("/auth/v1/resend")
+    assert captured["method"] == "POST"
+    assert captured["body"] == {
+        "type": "signup",
+        "email": "person@example.com",
+    }
+    assert captured["authorization"] is None
+
+
+def test_supabase_update_password_uses_authenticated_user_endpoint(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+    captured = {}
+
+    payload = {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "email": "person@example.com",
+        "user_metadata": {"display_name": "Person"},
+        "email_confirmed_at": "2026-09-25T22:00:00Z",
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        import json
+        captured["url"] = req.full_url
+        captured["method"] = req.method
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["authorization"] = req.headers.get("Authorization")
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        fake_urlopen,
+    )
+
+    user = provider.update_password("access-token", "new-password-123")
+
+    assert captured["url"].endswith("/auth/v1/user")
+    assert captured["method"] == "PUT"
+    assert captured["body"] == {"password": "new-password-123"}
+    assert captured["authorization"] == "Bearer access-token"
+    assert user.subject == payload["id"]
