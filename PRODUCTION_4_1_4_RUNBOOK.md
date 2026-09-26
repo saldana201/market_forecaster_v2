@@ -77,6 +77,36 @@ until Stripe test-mode validation is complete.
 
 Never store Supabase service-role or Stripe secret keys in source control.
 
+
+### Persistent authenticated browser sessions
+
+Authenticated Streamlit state now survives a hard browser refresh.
+
+Architecture:
+- the browser stores only a random opaque session handle in local storage
+- Supabase access and refresh tokens are never stored in browser local storage
+- the server stores the refresh token encrypted in `public.browser_auth_sessions`
+- the encryption key is derived server-side from the existing Supabase service-role secret
+- the session row is RLS-enabled and unavailable to anon/authenticated roles
+- the session is bound to the browser user-agent hash
+- default lifetime is 30 days unless the user signs out
+- signing out revokes the server-side session and clears the browser handle
+
+The Azure app therefore requires:
+
+    MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY=<server-only secret>
+
+for refresh-safe authenticated browser sessions as well as shared API rate limiting.
+
+A temporary Supabase/Auth outage must not silently erase an existing browser session.
+The UI should pause restoration and offer Retry instead of falling back to Demo.
+
+The authenticated workspace also persists only a harmless page slug such as:
+
+    ?view=account
+
+No tokens or session handles are placed in the URL.
+
 ## 5. Backups
 
 User data, subscriptions, and shared Forecast Contracts reside in Supabase Postgres.
@@ -156,6 +186,7 @@ The command evaluates the configured deployment without printing credentials.
 
 It checks:
 - managed authentication configuration
+- persistent browser-auth session configuration
 - persistent user-data configuration
 - shared Forecast Contract storage
 - shared Forecast Authority
@@ -193,7 +224,9 @@ verify the trusted RPC still works before deploying the change.
 8. Verify all 14 Demo markets show live.
 9. Verify a shared-store read outage still falls back to local contracts.
 10. Verify two authenticated users remain isolated by RLS.
-11. Verify Stripe remains disabled until its separate test-mode acceptance is complete.
-12. Run production_readiness --strict.
-13. For paid launch, run production_readiness --strict --require-billing.
-14. Verify Azure deployment and custom domain.
+11. Sign in, open Account, hard-refresh the browser, and confirm the user remains signed in on Account.
+12. Sign out and confirm a hard refresh returns to Demo.
+13. Verify Stripe remains disabled until its separate test-mode acceptance is complete.
+14. Run production_readiness --strict.
+15. For paid launch, run production_readiness --strict --require-billing.
+16. Verify Azure deployment and custom domain.

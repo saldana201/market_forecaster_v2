@@ -43,8 +43,20 @@ class FakeAuthProvider:
     def login(self, email: str, password: str) -> AuthResult:
         return AuthResult(
             user=AuthUser("subject-login", email, "Test User", True),
-            tokens=AuthTokens("good-a"),
+            tokens=AuthTokens("good-a", refresh_token="refresh-a"),
         )
+
+    def refresh_session(self, refresh_token: str) -> AuthResult:
+        if refresh_token == "refresh-a":
+            return AuthResult(
+                user=AuthUser("subject-a", "a@example.com", "A", True),
+                tokens=AuthTokens(
+                    "good-a",
+                    refresh_token="refresh-a-rotated",
+                    expires_in=3600,
+                ),
+            )
+        raise InvalidToken("invalid refresh token")
 
     def resend_confirmation(self, email: str) -> None:
         return None
@@ -541,3 +553,72 @@ def test_supabase_update_password_uses_authenticated_user_endpoint(monkeypatch):
     assert captured["body"] == {"password": "new-password-123"}
     assert captured["authorization"] == "Bearer access-token"
     assert user.subject == payload["id"]
+
+
+def test_expired_access_token_uses_refresh_token_and_stays_authenticated():
+    state = {}
+    establish_authenticated_session(
+        state,
+        AuthResult(
+            AuthUser("subject-a"),
+            AuthTokens("expired", refresh_token="refresh-a"),
+        ),
+        provider_name="fake",
+    )
+
+    identity = sync_authenticated_identity(state, FakeAuthProvider())
+
+    assert identity.authenticated is True
+    assert identity.auth_subject == "subject-a"
+    assert state[AUTH_SESSION_KEY]["access_token"] == "good-a"
+    assert state[AUTH_SESSION_KEY]["refresh_token"] == "refresh-a-rotated"
+
+
+def test_supabase_refresh_session_uses_refresh_token_grant(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+    captured = {}
+
+    payload = {
+        "access_token": "access-new",
+        "refresh_token": "refresh-new",
+        "expires_in": 3600,
+        "user": {
+            "id": "55555555-5555-4555-8555-555555555555",
+            "email": "person@example.com",
+            "user_metadata": {},
+            "email_confirmed_at": "2026-09-26T08:00:00Z",
+        },
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        import json
+        captured["url"] = req.full_url
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        fake_urlopen,
+    )
+
+    result = provider.refresh_session("refresh-old")
+
+    assert captured["url"].endswith("/auth/v1/token?grant_type=refresh_token")
+    assert captured["body"] == {"refresh_token": "refresh-old"}
+    assert result.tokens is not None
+    assert result.tokens.access_token == "access-new"
+    assert result.tokens.refresh_token == "refresh-new"

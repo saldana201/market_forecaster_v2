@@ -63,6 +63,11 @@ from market_forecaster.ui.billing import (
     render_billing_return_notice,
     render_upgrade_handoff,
 )
+from market_forecaster.ui.browser_session import (
+    browser_user_agent,
+    queue_browser_session_clear,
+    render_browser_session_bridge,
+)
 from market_forecaster.ui.user_data_workspace import (
     render_persistent_watchlist,
     render_persistent_portfolio,
@@ -83,9 +88,15 @@ from market_forecaster.core.options_flow_v2 import fetch_options_flow_v2, persis
 from market_forecaster.core.operations import record_operation_event
 from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 from market_forecaster.core.entitlements import can_view_research_lab, entitlements_for
+from market_forecaster.auth.browser_session_store import BrowserSessionError
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
+from market_forecaster.auth.persistent_session import (
+    ensure_persistent_browser_session,
+    restore_persistent_browser_session,
+    sync_persistent_browser_refresh_token,
+)
 from market_forecaster.auth.provider import AuthProviderError, InvalidToken
-from market_forecaster.auth.session import sync_authenticated_identity
+from market_forecaster.auth.session import AUTH_SESSION_KEY, sync_authenticated_identity
 from market_forecaster.persistence.supabase_data import PersistenceError
 from market_forecaster.services.subscriptions import (
     normalize_requested_plan,
@@ -102,6 +113,7 @@ from market_forecaster.autotune.tuner import run_autotune
 st.set_page_config(page_title=f"{BRAND} — Market Forecaster", layout="wide")
 inject_market_forecaster_theme()
 capture_billing_return()
+browser_storage = render_browser_session_bridge(st.session_state)
 
 # ===================================================================
 # Sidebar → returns a validated ForecastRequest
@@ -110,12 +122,75 @@ ensure_demo_session(st.session_state)
 if MULTI_USER_ENABLED:
     auth_ready, _auth_reason = auth_configuration_status()
     if auth_ready:
+        # A hard browser refresh creates a new Streamlit Session State. Wait for
+        # the tiny browser-storage component to report whether an opaque session
+        # handle exists before deciding that this user belongs in Demo.
+        if not browser_storage.ready:
+            st.caption("Restoring secure account session…")
+            st.stop()
+
+        provider = get_auth_provider()
+        current_auth = st.session_state.get(AUTH_SESSION_KEY)
+        if (
+            (not isinstance(current_auth, dict) or not current_auth.get("access_token"))
+            and browser_storage.handle
+        ):
+            try:
+                restored_identity = restore_persistent_browser_session(
+                    st.session_state,
+                    provider,
+                    handle=browser_storage.handle,
+                    user_agent=browser_user_agent(),
+                )
+                if restored_identity is None:
+                    st.session_state["auth_notice"] = (
+                        "Your saved browser session expired or was revoked. Please sign in again."
+                    )
+                    st.rerun()
+            except InvalidToken:
+                queue_browser_session_clear(st.session_state)
+                st.session_state["auth_notice"] = (
+                    "Your saved browser session expired. Please sign in again."
+                )
+                st.rerun()
+            except (BrowserSessionError, AuthProviderError):
+                st.warning(
+                    "Your saved account session exists, but it cannot be restored right now "
+                    "because the authentication service is temporarily unavailable."
+                )
+                if st.button(
+                    "Retry account session",
+                    key="retry_persistent_account_session",
+                    type="primary",
+                ):
+                    st.rerun()
+                st.stop()
+
         try:
-            sync_authenticated_identity(st.session_state, get_auth_provider())
+            synced_identity = sync_authenticated_identity(st.session_state, provider)
+            if synced_identity.authenticated:
+                ensure_persistent_browser_session(
+                    st.session_state,
+                    synced_identity,
+                    user_agent=browser_user_agent(),
+                )
+            sync_persistent_browser_refresh_token(st.session_state)
         except InvalidToken:
-            st.session_state["auth_notice"] = "Your account session expired. Please sign in again."
+            queue_browser_session_clear(st.session_state)
+            st.session_state["auth_notice"] = (
+                "Your account session expired. Please sign in again."
+            )
+            st.rerun()
+        except BrowserSessionError:
+            st.session_state["auth_notice"] = (
+                "Your account is signed in, but persistent browser-session storage "
+                "is temporarily unavailable."
+            )
         except AuthProviderError:
-            st.session_state["auth_notice"] = "Account verification is temporarily unavailable. Please sign in again."
+            st.session_state["auth_notice"] = (
+                "Account verification is temporarily unavailable. Your current "
+                "workspace will remain open while the provider recovers."
+            )
 
 if SUBSCRIPTIONS_ENABLED:
     current_identity = resolve_identity(st.session_state)
@@ -226,6 +301,10 @@ persistent account data, advanced research tools and API access.
 # ===================================================================
 # Internal / future authenticated workspace
 # ===================================================================
+notice = st.session_state.pop("auth_notice", None)
+if notice:
+    st.warning(notice)
+
 render_billing_return_notice()
 render_upgrade_handoff()
 
@@ -239,7 +318,7 @@ render_page_header(
 if is_analyst():
     model_availability_badges()
 
-tab_forecast, tab_watchlist, tab_portfolio, tab_history, tab_account, tab_research, tab_health, tab_advanced, tab_help = st.tabs([
+workspace_tab_labels = [
     "🔮 Forecast",
     "★ Watchlist",
     "▣ Portfolio",
@@ -249,7 +328,44 @@ tab_forecast, tab_watchlist, tab_portfolio, tab_history, tab_account, tab_resear
     "🩺 System Health",
     "⚙️ Advanced",
     "📚 Help",
-])
+]
+workspace_slug_by_label = {
+    "🔮 Forecast": "forecast",
+    "★ Watchlist": "watchlist",
+    "▣ Portfolio": "portfolio",
+    "↺ History": "history",
+    "◎ Account": "account",
+    "🧪 Research Lab": "research",
+    "🩺 System Health": "health",
+    "⚙️ Advanced": "advanced",
+    "📚 Help": "help",
+}
+workspace_label_by_slug = {
+    slug: label for label, slug in workspace_slug_by_label.items()
+}
+
+requested_view = st.query_params.get("view")
+if isinstance(requested_view, list):
+    requested_view = requested_view[0] if requested_view else None
+default_workspace_tab = workspace_label_by_slug.get(
+    str(requested_view or "").strip().lower(),
+    "🔮 Forecast",
+)
+
+
+def _persist_workspace_tab() -> None:
+    label = st.session_state.get("workspace_navigation")
+    slug = workspace_slug_by_label.get(str(label or ""))
+    if slug:
+        st.query_params["view"] = slug
+
+
+tab_forecast, tab_watchlist, tab_portfolio, tab_history, tab_account, tab_research, tab_health, tab_advanced, tab_help = st.tabs(
+    workspace_tab_labels,
+    default=default_workspace_tab,
+    key="workspace_navigation",
+    on_change=_persist_workspace_tab,
+)
 
 tab_ensemble = tab_advanced if is_trader() else None
 tab_sentiment = tab_advanced if is_analyst() else None

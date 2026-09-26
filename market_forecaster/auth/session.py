@@ -76,6 +76,7 @@ def establish_authenticated_session(
     *,
     provider_name: str,
     plan: str = "standard",
+    restore_requested_plan_force: bool = True,
 ) -> AppIdentity:
     if result.tokens is None or not result.tokens.access_token:
         raise InvalidToken("Authentication completed without an active access token.")
@@ -100,7 +101,11 @@ def establish_authenticated_session(
         "email_confirmed": result.user.email_confirmed,
     }
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
-    _restore_requested_plan(state, result.user, force=True)
+    _restore_requested_plan(
+        state,
+        result.user,
+        force=restore_requested_plan_force,
+    )
     return identity
 
 
@@ -117,8 +122,28 @@ def sync_authenticated_identity(
 
     try:
         user = provider.verify_token(str(auth["access_token"]))
-    except (InvalidToken, AuthProviderError):
-        clear_authenticated_session(state)
+    except InvalidToken:
+        refresh_token = str(auth.get("refresh_token") or "").strip()
+        if not refresh_token:
+            clear_authenticated_session(state)
+            raise
+
+        result = provider.refresh_session(refresh_token)
+        if result.tokens is None or not result.tokens.access_token:
+            clear_authenticated_session(state)
+            raise InvalidToken("Authentication refresh did not return an active session.")
+
+        identity = establish_authenticated_session(
+            state,
+            result,
+            provider_name=provider.name,
+            plan=plan,
+            restore_requested_plan_force=False,
+        )
+        return identity
+    except AuthProviderError:
+        # Provider/network outages should not silently destroy a valid local
+        # session. Let the caller surface a temporary verification warning.
         raise
 
     identity = identity_from_verified_user(
@@ -148,6 +173,8 @@ def clear_authenticated_session(state: MutableMapping) -> AppIdentity:
     state.pop("simple_forecast_contract", None)
     state.pop("billing_checkout_url", None)
     state.pop("billing_checkout_plan", None)
+    state.pop("_browser_session_handle", None)
+    state.pop("_browser_session_refresh_hash", None)
     identity = new_demo_identity_for_session(str(state[DEMO_SESSION_KEY]["session_id"]))
     state[IDENTITY_SESSION_KEY] = identity.to_dict()
     return identity
