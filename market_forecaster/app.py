@@ -135,18 +135,35 @@ if MULTI_USER_ENABLED:
             and browser_storage.handle
         ):
             try:
-                restore_persistent_browser_session(
+                restored_identity = restore_persistent_browser_session(
                     st.session_state,
                     provider,
                     handle=browser_storage.handle,
                     user_agent=browser_user_agent(),
                 )
-            except (InvalidToken, BrowserSessionError, AuthProviderError):
+                if restored_identity is None:
+                    st.session_state["auth_notice"] = (
+                        "Your saved browser session expired or was revoked. Please sign in again."
+                    )
+                    st.rerun()
+            except InvalidToken:
                 queue_browser_session_clear(st.session_state)
                 st.session_state["auth_notice"] = (
-                    "Your saved browser session could not be restored. Please sign in again."
+                    "Your saved browser session expired. Please sign in again."
                 )
                 st.rerun()
+            except (BrowserSessionError, AuthProviderError):
+                st.warning(
+                    "Your saved account session exists, but it cannot be restored right now "
+                    "because the authentication service is temporarily unavailable."
+                )
+                if st.button(
+                    "Retry account session",
+                    key="retry_persistent_account_session",
+                    type="primary",
+                ):
+                    st.rerun()
+                st.stop()
 
         try:
             sync_authenticated_identity(st.session_state, provider)
