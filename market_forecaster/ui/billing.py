@@ -11,6 +11,7 @@ from market_forecaster.services.subscriptions import (
     load_subscription,
     normalize_requested_plan,
     requested_plan_is_satisfied,
+    subscription_configuration_diagnostics,
     subscription_configuration_status,
 )
 
@@ -200,6 +201,19 @@ def render_upgrade_handoff() -> None:
             st.rerun()
 
 
+def _render_billing_activation_checklist() -> None:
+    with st.expander("Billing activation checklist"):
+        for row in subscription_configuration_diagnostics():
+            icon = "✅" if row.get("ready") else "○"
+            st.markdown(
+                f"{icon} **{row.get('name')}** — {row.get('detail')}"
+            )
+        st.caption(
+            "The Stripe webhook signing secret is stored in Supabase Edge Function secrets "
+            "and is verified separately from the Streamlit application."
+        )
+
+
 def render_billing_panel() -> None:
     identity = resolve_identity(st.session_state)
     if not identity.authenticated:
@@ -222,6 +236,7 @@ def render_billing_panel() -> None:
                 f"{selected_plan.title()} is selected. Stripe Checkout is not active on this "
                 f"deployment yet, so no payment can be started. {reason}"
             )
+            _render_billing_activation_checklist()
             return
 
         subscription = None

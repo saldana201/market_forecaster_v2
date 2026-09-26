@@ -39,16 +39,69 @@ def _price_id(plan: str) -> str:
     return str(os.getenv(key or "") or "").strip()
 
 
+def subscription_configuration_diagnostics() -> list[dict]:
+    """Return a secret-safe checklist for subscription activation."""
+    secret = _stripe_secret()
+    if secret.startswith("sk_test_"):
+        stripe_mode = "test"
+    elif secret.startswith("sk_live_"):
+        stripe_mode = "live"
+    elif secret:
+        stripe_mode = "configured"
+    else:
+        stripe_mode = "missing"
+
+    return [
+        {
+            "name": "Subscription feature flag",
+            "ready": bool(SUBSCRIPTIONS_ENABLED),
+            "detail": "enabled" if SUBSCRIPTIONS_ENABLED else "disabled",
+        },
+        {
+            "name": "Persistent account storage",
+            "ready": bool(DATABASE_PERSISTENCE_ENABLED),
+            "detail": "enabled" if DATABASE_PERSISTENCE_ENABLED else "disabled",
+        },
+        {
+            "name": "Stripe secret key",
+            "ready": bool(secret),
+            "detail": stripe_mode,
+        },
+        {
+            "name": "Standard recurring price",
+            "ready": bool(_price_id("standard")),
+            "detail": "configured" if _price_id("standard") else "missing",
+        },
+        {
+            "name": "Pro recurring price",
+            "ready": bool(_price_id("pro")),
+            "detail": "configured" if _price_id("pro") else "missing",
+        },
+        {
+            "name": "Public return URL",
+            "ready": bool(_public_url()),
+            "detail": _public_url() or "missing",
+        },
+    ]
+
+
 def subscription_configuration_status() -> tuple[bool, str]:
-    if not SUBSCRIPTIONS_ENABLED:
+    checks = subscription_configuration_diagnostics()
+    first_missing = next((row for row in checks if not row["ready"]), None)
+    if first_missing is None:
+        return True, "ready"
+
+    name = str(first_missing["name"])
+    detail = str(first_missing["detail"])
+    if name == "Subscription feature flag":
         return False, "SUBSCRIPTIONS_ENABLED is false."
-    if not DATABASE_PERSISTENCE_ENABLED:
+    if name == "Persistent account storage":
         return False, "DATABASE_PERSISTENCE_ENABLED must be enabled first."
-    if not _stripe_secret():
+    if name == "Stripe secret key":
         return False, "STRIPE_SECRET_KEY is not configured."
-    if not _price_id("standard") or not _price_id("pro"):
+    if name in {"Standard recurring price", "Pro recurring price"}:
         return False, "Stripe Standard or Pro price ID is not configured."
-    return True, "ready"
+    return False, f"{name} is not ready ({detail})."
 
 
 def load_subscription(

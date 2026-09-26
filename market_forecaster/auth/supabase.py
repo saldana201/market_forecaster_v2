@@ -180,6 +180,25 @@ class SupabaseAuthProvider:
             requires_email_confirmation=False,
         )
 
+    def resend_confirmation(self, email: str) -> None:
+        self._request(
+            "/auth/v1/resend",
+            method="POST",
+            payload={
+                "type": "signup",
+                "email": str(email or "").strip(),
+            },
+        )
+
+    def update_password(self, access_token: str, new_password: str) -> AuthUser:
+        result = self._request(
+            "/auth/v1/user",
+            method="PUT",
+            payload={"password": new_password},
+            access_token=access_token,
+        )
+        return self._user(result)
+
     def logout(self, access_token: str) -> None:
         self._request("/auth/v1/logout", method="POST", access_token=access_token)
 
