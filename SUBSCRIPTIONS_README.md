@@ -49,3 +49,20 @@ subscription authority.
 
 The app uses Stripe-hosted Checkout and Customer Portal. Card details are never collected
 or stored by Market Forecaster.
+
+
+## Activation diagnostics
+
+The signed-in Subscription panel exposes a secret-safe activation checklist showing:
+
+- subscription feature flag
+- persistent account storage
+- Stripe secret-key presence and test/live mode
+- Standard recurring-price configuration
+- Pro recurring-price configuration
+- public return URL
+
+The checklist never displays secret keys or full Stripe credentials.
+
+Use the checklist during Stripe test-mode activation before setting
+`SUBSCRIPTIONS_ENABLED=true` in production.
