@@ -55,7 +55,7 @@ from market_forecaster.ui.demo_landing import render_demo_landing
 from market_forecaster.ui.demo_watchlist import render_demo_watchlist
 from market_forecaster.ui.demo_portfolio import render_demo_portfolio
 from market_forecaster.ui.demo_plans import render_demo_plans
-from market_forecaster.ui.demo_theme import inject_demo_theme
+from market_forecaster.ui.demo_theme import inject_market_forecaster_theme
 from market_forecaster.ui.account import render_account_screen
 from market_forecaster.ui.billing import (
     capture_billing_return,
@@ -99,6 +99,7 @@ from market_forecaster.autotune.tuner import run_autotune
 # Page config
 # ===================================================================
 st.set_page_config(page_title=f"{BRAND} — Market Forecaster", layout="wide")
+inject_market_forecaster_theme()
 capture_billing_return()
 
 # ===================================================================
@@ -149,7 +150,6 @@ if is_demo:
     # Use Streamlit's segmented control instead of st.tabs for the public Demo
     # navigation. This avoids browser/theme-specific BaseWeb tab rendering issues
     # and only renders the selected Demo workspace on each rerun.
-    inject_demo_theme()
     demo_nav_options = (
         "◈ Discover",
         "★ Watchlist",
