@@ -146,14 +146,6 @@ def test_existing_authenticated_session_is_upgraded_to_persistent_storage(monkey
 
     captured = {}
 
-    monkeypatch.setattr(
-        persistent,
-        "create_browser_session",
-        lambda **kwargs: captured.setdefault("create", kwargs) or "opaque-handle",
-    )
-
-    # The lambda above returns the dict on first call because setdefault returns
-    # the inserted value, so use a small helper instead.
     def fake_create(**kwargs):
         captured["create"] = kwargs
         return "opaque-handle"
