@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 
 from market_forecaster.api.settings import load_settings
 from market_forecaster.api.shared_rate_limit import SharedRateLimiter
+from market_forecaster.auth.browser_session_store import browser_session_configuration_status
 from market_forecaster.auth.factory import auth_configuration_status
 from market_forecaster.config import (
     DATABASE_PERSISTENCE_ENABLED,
@@ -55,6 +56,16 @@ def evaluate_readiness(*, require_billing: bool = False) -> dict:
             auth_ready,
             MULTI_USER_ENABLED,
             "ready" if auth_ready else auth_reason,
+        )
+    )
+
+    browser_session_ready, browser_session_reason = browser_session_configuration_status()
+    checks.append(
+        _check(
+            "persistent_browser_auth_session",
+            browser_session_ready,
+            MULTI_USER_ENABLED,
+            "ready" if browser_session_ready else browser_session_reason,
         )
     )
 
