@@ -4,10 +4,12 @@ import json
 
 from market_forecaster.billing.stripe_client import StripeBillingClient
 from market_forecaster.core.session_identity import AppIdentity
+import market_forecaster.services.subscriptions as subscriptions
 from market_forecaster.services.subscriptions import (
     effective_plan,
     normalize_requested_plan,
     requested_plan_is_satisfied,
+    subscription_configuration_diagnostics,
 )
 
 
@@ -109,3 +111,41 @@ def test_requested_plan_normalization_and_satisfaction():
     assert requested_plan_is_satisfied(_identity("standard", "active"), "pro") is False
     assert requested_plan_is_satisfied(_identity("pro", "canceled"), "pro") is False
     assert requested_plan_is_satisfied(_identity("demo", "none"), None) is True
+
+
+def test_subscription_diagnostics_are_secret_safe(monkeypatch):
+    monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_ENABLED", True)
+    monkeypatch.setattr(subscriptions, "DATABASE_PERSISTENCE_ENABLED", True)
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_do-not-expose-this-value")
+    monkeypatch.setenv("STRIPE_STANDARD_PRICE_ID", "price_standard")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_pro")
+    monkeypatch.setenv(
+        "MARKET_FORECASTER_PUBLIC_URL",
+        "https://marketforecaster.oneeightaisystems.com",
+    )
+
+    rows = subscription_configuration_diagnostics()
+    by_name = {row["name"]: row for row in rows}
+
+    assert by_name["Subscription feature flag"]["ready"] is True
+    assert by_name["Persistent account storage"]["ready"] is True
+    assert by_name["Stripe secret key"]["detail"] == "test"
+    assert "do-not-expose" not in str(rows)
+    assert by_name["Standard recurring price"]["ready"] is True
+    assert by_name["Pro recurring price"]["ready"] is True
+
+
+def test_subscription_diagnostics_identify_missing_activation_pieces(monkeypatch):
+    monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_ENABLED", False)
+    monkeypatch.setattr(subscriptions, "DATABASE_PERSISTENCE_ENABLED", True)
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("STRIPE_STANDARD_PRICE_ID", raising=False)
+    monkeypatch.delenv("STRIPE_PRO_PRICE_ID", raising=False)
+
+    rows = subscription_configuration_diagnostics()
+    by_name = {row["name"]: row for row in rows}
+
+    assert by_name["Subscription feature flag"]["ready"] is False
+    assert by_name["Stripe secret key"]["ready"] is False
+    assert by_name["Standard recurring price"]["ready"] is False
+    assert by_name["Pro recurring price"]["ready"] is False
