@@ -36,6 +36,7 @@ def test_billing_settings_are_required_only_when_subscriptions_enabled():
     text = _workflow_text()
 
     assert "SUBSCRIPTIONS_ENABLED" in text
+    assert 'require_setting "MARKET_FORECASTER_BILLING_MODE"' in text
     assert 'require_setting "MARKET_FORECASTER_PUBLIC_URL"' in text
     assert 'require_setting "STRIPE_SECRET_KEY"' in text
     assert 'require_setting "STRIPE_STANDARD_PRICE_ID"' in text
@@ -50,3 +51,14 @@ def test_deployment_preflight_does_not_print_setting_values():
     # value inside the shell variable used for the empty-value check.
     assert 'echo "$value"' not in text
     assert "Intentionally print only the setting name, never the value." in text
+
+
+
+def test_billing_preflight_enforces_test_live_secret_boundaries():
+    text = _workflow_text()
+
+    assert "Test billing mode requires an sk_test_ Stripe secret key." in text
+    assert "Live billing mode requires an sk_live_ Stripe secret key." in text
+    assert "Live billing mode requires an HTTPS public return URL." in text
+    assert "MARKET_FORECASTER_BILLING_MODE must be test or live." in text
+    assert "unset stripe_secret" in text
