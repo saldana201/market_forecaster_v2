@@ -16,6 +16,11 @@ from market_forecaster.core.session_identity import resolve_identity
 from market_forecaster.persistence.supabase_data import PersistenceError
 from market_forecaster.services.forecast_access import ForecastAccessError, load_demo_forecast
 from market_forecaster.services.user_data import client_for_state, save_forecast_history
+from market_forecaster.ui.design_system import (
+    render_kpi_strip,
+    render_page_header,
+    render_section_header,
+)
 
 
 def _number(value):
@@ -218,16 +223,18 @@ def render_forecast_dashboard(current_ticker: str) -> None:
     identity = resolve_identity(st.session_state)
     demo_cache_only = DEMO_MODE_ENABLED and identity.plan == "demo"
 
-    st.subheader(f"Forecast Outlook — {ticker}")
     if demo_cache_only:
-        st.caption(
-            "Full-quality shared Forecast Contract · 1D / 5D / 10D / 20D outlook · "
-            "cached for fast anonymous access."
+        render_section_header(
+            f"Forecast Outlook — {ticker}",
+            "Full-quality shared Forecast Contract · 1D / 5D / 10D / 20D outlook · cached for fast anonymous access.",
+            badge="Shared Demo forecast",
         )
     else:
-        st.caption(
-            "A plain-language view of the active forecasting setup. "
-            "Technical research details are in Research Lab."
+        render_page_header(
+            f"{ticker} Forecast",
+            "A plain-language multi-horizon view of the active Forecast Authority. Technical research details remain in Research Lab.",
+            eyebrow="Forecast workspace",
+            badge=f"{identity.plan.title()} · Canonical contract",
         )
 
     if demo_cache_only:
@@ -298,15 +305,41 @@ def render_forecast_dashboard(current_ticker: str) -> None:
 
     forecasts = contract.get("forecasts", [])
     anchor = primary_forecast(forecasts)
-    h1, h2, h3, h4 = st.columns(4)
-    with h1:
-        st.metric("Current Price", _money(contract.get("current_price")))
-    with h2:
-        st.metric("Primary Projected Price", _money(anchor.get("projected_price")) if anchor else "—", delta=_percent(anchor.get("expected_return_pct"), signed=True) if anchor else None)
-    with h3:
-        st.metric("Chance of Finishing Higher", _percent(anchor.get("probability_up_pct")) if anchor else "—")
-    with h4:
-        st.metric("Forecast Evidence", evidence_quality(anchor))
+    expected_move = _number(anchor.get("expected_return_pct")) if anchor else None
+    move_tone = (
+        "positive"
+        if expected_move is not None and expected_move > 0.05
+        else "negative"
+        if expected_move is not None and expected_move < -0.05
+        else "neutral"
+    )
+    render_kpi_strip(
+        [
+            {
+                "label": "Current price",
+                "value": _money(contract.get("current_price")),
+                "caption": f"Data through {str(contract.get('as_of', ''))[:10] or 'latest available'}",
+                "tone": "accent",
+            },
+            {
+                "label": "Primary projected price",
+                "value": _money(anchor.get("projected_price")) if anchor else "—",
+                "caption": _percent(anchor.get("expected_return_pct"), signed=True) if anchor else "No primary horizon",
+                "tone": move_tone,
+            },
+            {
+                "label": "Chance higher",
+                "value": _percent(anchor.get("probability_up_pct")) if anchor else "—",
+                "caption": "Calibrated direction probability",
+            },
+            {
+                "label": "Forecast evidence",
+                "value": evidence_quality(anchor),
+                "caption": _contract_age_text(contract),
+                "tone": "positive" if evidence_quality(anchor) == "Strong" else "neutral",
+            },
+        ]
+    )
 
     if identity.authenticated and can_save_forecast_history(identity):
         with st.container(border=True):
@@ -330,7 +363,10 @@ def render_forecast_dashboard(current_ticker: str) -> None:
                     "contract again updates the existing history item rather than creating a duplicate."
                 )
 
-    st.markdown("### Future Price Outlook")
+    render_section_header(
+        "Future Price Outlook",
+        "Compare projected price, expected move, probability, range, and evidence across the canonical horizons.",
+    )
     table = _forecast_table(contract)
     if not table.empty:
         st.dataframe(table, use_container_width=True, hide_index=True)
@@ -339,7 +375,10 @@ def render_forecast_dashboard(current_ticker: str) -> None:
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### Forecast Summary")
+    render_section_header(
+        "Forecast Summary",
+        "A concise interpretation of the current canonical Forecast Contract.",
+    )
     st.info(plain_language_summary(contract))
 
     with st.expander("Why this forecast?"):
