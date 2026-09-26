@@ -58,6 +58,65 @@ def _login_form() -> None:
         st.error(f"Sign-in unavailable: {exc}")
 
 
+def _confirmation_help_panel() -> None:
+    with st.expander("Didn't receive your confirmation email?"):
+        st.caption(
+            "Resend is only for an account that was already created but is still awaiting email confirmation."
+        )
+        email = st.text_input(
+            "Account email",
+            key="account_resend_email",
+            placeholder="you@example.com",
+        )
+
+        cooldown_until = float(
+            st.session_state.get("account_resend_cooldown_until", 0.0) or 0.0
+        )
+        remaining = max(0, int(round(cooldown_until - time.time())))
+
+        if remaining > 0:
+            st.caption(f"Please wait about {remaining} seconds before requesting another email.")
+
+        if st.button(
+            "Resend confirmation email",
+            key="account_resend_confirmation",
+            use_container_width=True,
+            disabled=remaining > 0,
+        ):
+            if not email.strip():
+                st.warning("Enter the email address used to create the account.")
+                return
+
+            try:
+                get_auth_provider().resend_confirmation(email.strip())
+                st.session_state["account_resend_cooldown_until"] = time.time() + 60
+                st.success(
+                    "If this address has an unconfirmed account, a new confirmation email was requested. "
+                    "Check Inbox and Spam before requesting another one."
+                )
+            except RateLimited as exc:
+                retry = int(exc.retry_after_seconds or 60)
+                st.session_state["account_resend_cooldown_until"] = (
+                    time.time() + max(1, retry)
+                )
+                if "email rate limit exceeded" in str(exc).lower():
+                    st.error(
+                        "The Supabase Auth email sender has reached its project sending limit. "
+                        "Additional confirmation emails will not be reliable until custom SMTP is configured."
+                    )
+                else:
+                    st.warning(
+                        f"Confirmation email requests are temporarily limited. Try again in about {retry} seconds."
+                    )
+            except AuthProviderError:
+                # Keep the response non-enumerating. Do not reveal whether the
+                # supplied address exists or is already confirmed.
+                st.info(
+                    "The confirmation request could not be completed right now. "
+                    "Try again later or use Sign in if the account is already confirmed."
+                )
+
+
 def _register_form() -> None:
     with st.form("account_register_form", clear_on_submit=False):
         display_name = st.text_input("Display name", key="account_register_name")
@@ -233,6 +292,51 @@ def _preferences_panel(identity) -> None:
                 st.error(f"Could not save preferences: {exc}")
 
 
+def _security_panel() -> None:
+    with st.container(border=True):
+        st.markdown("### Security")
+        st.caption(
+            "Change the password for the currently signed-in account. "
+            "Market Forecaster sends the new password directly to Supabase Auth and does not store it."
+        )
+
+        new_password = st.text_input(
+            "New password",
+            type="password",
+            key="account_new_password",
+            help="Use at least 8 characters.",
+        )
+        confirm_password = st.text_input(
+            "Confirm new password",
+            type="password",
+            key="account_new_password_confirm",
+        )
+
+        if st.button(
+            "Update password",
+            key="account_update_password",
+            use_container_width=True,
+        ):
+            if len(new_password) < 8:
+                st.warning("Use a password with at least 8 characters.")
+                return
+            if new_password != confirm_password:
+                st.warning("Passwords do not match.")
+                return
+
+            auth = st.session_state.get(AUTH_SESSION_KEY) or {}
+            token = auth.get("access_token") if isinstance(auth, dict) else None
+            if not token:
+                st.warning("Your account session is unavailable. Sign in again.")
+                return
+
+            try:
+                get_auth_provider().update_password(str(token), new_password)
+                st.success("Password updated successfully.")
+            except AuthProviderError as exc:
+                st.error(f"Password update unavailable: {exc}")
+
+
 def _signed_in_account() -> None:
     identity = resolve_identity(st.session_state)
     profile = auth_profile(st.session_state)
@@ -286,6 +390,7 @@ def _signed_in_account() -> None:
         )
 
     _preferences_panel(identity)
+    _security_panel()
     render_billing_panel()
 
     if st.button("Sign out", key="account_logout", use_container_width=True):
@@ -335,3 +440,5 @@ def render_account_screen() -> None:
         _login_form()
     with register_tab:
         _register_form()
+
+    _confirmation_help_panel()
