@@ -160,10 +160,53 @@ jobs:
 
           if [ "$(printf '%s' "$subscriptions_enabled" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
             echo "Subscriptions are enabled; validating Stripe production settings."
+            require_setting "MARKET_FORECASTER_BILLING_MODE"
             require_setting "MARKET_FORECASTER_PUBLIC_URL"
             require_setting "STRIPE_SECRET_KEY"
             require_setting "STRIPE_STANDARD_PRICE_ID"
             require_setting "STRIPE_PRO_PRICE_ID"
+
+            billing_mode="$(az webapp config appsettings list \
+              --resource-group "$RESOURCE_GROUP" \
+              --name marketforecaster \
+              --query "[?name=='MARKET_FORECASTER_BILLING_MODE'].value | [0]" \
+              -o tsv | tr '[:upper:]' '[:lower:]')"
+            stripe_secret="$(az webapp config appsettings list \
+              --resource-group "$RESOURCE_GROUP" \
+              --name marketforecaster \
+              --query "[?name=='STRIPE_SECRET_KEY'].value | [0]" \
+              -o tsv)"
+            public_url="$(az webapp config appsettings list \
+              --resource-group "$RESOURCE_GROUP" \
+              --name marketforecaster \
+              --query "[?name=='MARKET_FORECASTER_PUBLIC_URL'].value | [0]" \
+              -o tsv)"
+
+            case "$billing_mode" in
+              test)
+                if [[ "$stripe_secret" != sk_test_* ]]; then
+                  echo "::error::Test billing mode requires an sk_test_ Stripe secret key."
+                  exit 1
+                fi
+                ;;
+              live)
+                if [[ "$stripe_secret" != sk_live_* ]]; then
+                  echo "::error::Live billing mode requires an sk_live_ Stripe secret key."
+                  exit 1
+                fi
+                if [[ "$public_url" != https://* ]]; then
+                  echo "::error::Live billing mode requires an HTTPS public return URL."
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "::error::MARKET_FORECASTER_BILLING_MODE must be test or live."
+                exit 1
+                ;;
+            esac
+
+            unset stripe_secret
+            echo "Stripe billing mode safety check passed."
           else
             echo "Subscriptions are not enabled; Stripe settings remain non-blocking for this deployment."
           fi
