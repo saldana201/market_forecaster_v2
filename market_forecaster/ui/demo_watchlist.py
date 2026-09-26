@@ -7,6 +7,11 @@ from market_forecaster.core.demo_universe import is_demo_ticker
 from market_forecaster.core.entitlements import check_watchlist_limit, entitlements_for
 from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 from market_forecaster.services.forecast_access import demo_cache_status
+from market_forecaster.ui.design_system import (
+    render_kpi_strip,
+    render_page_header,
+    render_section_header,
+)
 from market_forecaster.ui.market_cards import (
     group_watchlist_symbols,
     render_horizon_selector,
@@ -21,18 +26,32 @@ def render_demo_watchlist(active_ticker: str) -> None:
     rules = entitlements_for(identity)
     cache_map = {row["ticker"]: row for row in demo_cache_status()}
 
-    st.markdown("## My Market Watchlist")
-    st.caption(
-        "Track markets by sector and compare the same 1D, 5D, 10D, and 20D Forecast Contracts used in Market Explorer."
+    render_page_header(
+        "My Market Watchlist",
+        "Track markets by sector and compare the same 1D, 5D, 10D, and 20D Forecast Contracts used in Market Explorer.",
+        eyebrow="Market workspace",
+        badge="Demo · Session only",
     )
-
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        st.metric("Tracked markets", len(watchlist))
-    with m2:
-        st.metric("Free Demo capacity", f"{len(watchlist)} / {rules.watchlist_limit}")
-    with m3:
-        st.metric("Storage", "Session only")
+    render_kpi_strip(
+        [
+            {
+                "label": "Tracked markets",
+                "value": str(len(watchlist)),
+                "caption": "Markets currently in this session",
+                "tone": "accent",
+            },
+            {
+                "label": "Plan capacity",
+                "value": f"{len(watchlist)} / {rules.watchlist_limit}",
+                "caption": "Free Demo watchlist limit",
+            },
+            {
+                "label": "Storage",
+                "value": "Session",
+                "caption": "Clears when the Demo session expires",
+            },
+        ]
+    )
 
     ticker = str(active_ticker or "").upper().strip()
     if ticker and is_demo_ticker(ticker) and ticker not in watchlist:
@@ -70,8 +89,10 @@ def render_demo_watchlist(active_ticker: str) -> None:
     groups = group_watchlist_symbols(list(watchlist), cache_map)
 
     for sector, rows in groups.items():
-        st.markdown(f"### {sector}")
-        st.caption(f"{len(rows)} tracked market{'s' if len(rows) != 1 else ''}")
+        render_section_header(
+            sector,
+            f"{len(rows)} tracked market{'s' if len(rows) != 1 else ''}",
+        )
 
         cols = st.columns(3)
         for idx, meta in enumerate(rows):

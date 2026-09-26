@@ -8,6 +8,17 @@ from market_forecaster.core.demo_universe import is_demo_ticker
 from market_forecaster.core.entitlements import check_position_limit, entitlements_for
 from market_forecaster.core.session_identity import ensure_demo_session, resolve_identity
 from market_forecaster.services.forecast_access import demo_cache_status
+from market_forecaster.ui.design_system import (
+    render_kpi_strip,
+    render_page_header,
+    render_section_header,
+)
+from market_forecaster.ui.market_cards import render_horizon_selector
+from market_forecaster.ui.portfolio_cards import (
+    build_portfolio_snapshot,
+    render_portfolio_position_card,
+    render_sector_allocation,
+)
 
 
 def _normalize_rows(frame: pd.DataFrame) -> list[dict]:
@@ -95,53 +106,114 @@ def render_demo_portfolio() -> None:
     rules = entitlements_for(identity)
     positions = portfolio.get("positions", [])
     cache_map = {row["ticker"]: row for row in demo_cache_status()}
-    valued, market_value, unrealized = _portfolio_valuation(positions, cache_map)
+    cash_value = float(portfolio.get("cash", 0.0) or 0.0)
 
-    st.markdown("## Demo Portfolio")
-    st.caption(
-        "Experiment with holdings and cost basis using cached market prices. "
-        "Everything here remains private to the current session."
+    snapshot = build_portfolio_snapshot(
+        positions,
+        cash_value,
+        cache_map,
+        cost_key="cost_basis",
     )
 
-    cash_value = float(portfolio.get("cash", 0.0) or 0.0)
-    net_value = cash_value + market_value
+    render_page_header(
+        "Demo Portfolio",
+        "Experiment with holdings, cost basis, allocation, open performance, and multi-horizon forecast outlook using cached market data.",
+        eyebrow="Portfolio intelligence",
+        badge="Demo · Session only",
+    )
 
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Portfolio value", _money(net_value))
-    with m2:
-        st.metric("Cash", _money(cash_value))
-    with m3:
-        st.metric("Unrealized P/L", _money(unrealized))
-    with m4:
-        st.metric("Positions", f"{len(positions)} / {rules.positions_per_portfolio}")
+    pnl_tone = "positive" if snapshot["unrealized"] > 0 else (
+        "negative" if snapshot["unrealized"] < 0 else "neutral"
+    )
+    return_tone = "positive" if snapshot["return_pct"] > 0 else (
+        "negative" if snapshot["return_pct"] < 0 else "neutral"
+    )
 
-    if valued:
-        st.markdown("### Position snapshot")
+    render_kpi_strip(
+        [
+            {
+                "label": "Portfolio value",
+                "value": _money(snapshot["portfolio_value"]),
+                "caption": "Cash + marked holdings",
+                "tone": "accent",
+            },
+            {
+                "label": "Invested capital",
+                "value": _money(snapshot["invested_capital"]),
+                "caption": "Absolute cost basis in open positions",
+            },
+            {
+                "label": "Unrealized P/L",
+                "value": _money(snapshot["unrealized"]),
+                "caption": "Open-position profit / loss",
+                "tone": pnl_tone,
+            },
+            {
+                "label": "Open return",
+                "value": f"{snapshot['return_pct']:+.1f}%",
+                "caption": "Unrealized P/L ÷ invested capital",
+                "tone": return_tone,
+            },
+            {
+                "label": "Cash",
+                "value": _money(snapshot["cash"]),
+                "caption": f"{snapshot['cash_pct']:.1f}% of portfolio value",
+            },
+            {
+                "label": "Positions",
+                "value": f"{len(positions)} / {rules.positions_per_portfolio}",
+                "caption": "Free Demo position capacity",
+            },
+        ]
+    )
+
+    if positions:
+        allocation_col, outlook_col = st.columns([2, 3])
+        with allocation_col:
+            render_section_header(
+                "Sector allocation",
+                "Current gross market exposure by sector.",
+            )
+            render_sector_allocation(snapshot)
+        with outlook_col:
+            render_section_header(
+                "Forecast horizon",
+                "Use one horizon across every position card.",
+            )
+            horizon_days = render_horizon_selector(key="portfolio_horizon")
+
+        render_section_header(
+            "Position outlook",
+            "Market value, open P/L, allocation, and forward Forecast Contract signals.",
+            badge=f"{horizon_days}D",
+        )
         cols = st.columns(3)
-        for idx, row in enumerate(valued):
+        active = str(st.session_state.get("ticker") or "").upper()
+        for idx, row in enumerate(snapshot["positions"]):
             with cols[idx % 3]:
-                with st.container(border=True):
-                    st.markdown(f"### {row['ticker']}")
-                    st.caption("LONG" if row["quantity"] > 0 else "SHORT")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.metric("Current", _money(row["current_price"]))
-                    with c2:
-                        st.metric(
-                            "P/L",
-                            _money(row["unrealized"]),
-                            delta=None if row["unrealized_pct"] is None else f"{row['unrealized_pct']:+.1f}%",
-                        )
-                    st.caption(
-                        f"{abs(row['quantity']):,.4f} shares · Avg. cost {_money(row['cost_basis'])}"
-                    )
-                    st.caption(f"Market value: {_money(row['market_value'])}")
+                opened = render_portfolio_position_card(
+                    row,
+                    horizon_days=horizon_days,
+                    key_prefix="demo_portfolio",
+                    selected=row["ticker"] == active,
+                )
+                if opened:
+                    st.session_state["ticker"] = row["ticker"]
+                    st.session_state["demo_selected_ticker"] = row["ticker"]
+                    st.rerun()
+    else:
+        with st.container(border=True):
+            st.markdown("### Build your Demo portfolio")
+            st.caption(
+                "Add a Demo ticker, quantity, and average cost below. The dashboard will calculate "
+                "allocation, market value, open P/L, and multi-horizon forecast outlook."
+            )
 
+    render_section_header(
+        "Manage Demo holdings",
+        "Use symbols from Market Explorer. Nothing here is written to persistent account storage.",
+    )
     with st.container(border=True):
-        st.markdown("### Edit Demo portfolio")
-        st.caption("Use symbols from the Demo Market Explorer. No data is written to the legacy local portfolio file.")
-
         cash = st.number_input(
             "Cash / unallocated capital",
             min_value=0.0,
@@ -158,7 +230,11 @@ def render_demo_portfolio() -> None:
             column_config={
                 "ticker": st.column_config.TextColumn("Ticker"),
                 "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
-                "cost_basis": st.column_config.NumberColumn("Average cost", min_value=0.0, format="$%.2f"),
+                "cost_basis": st.column_config.NumberColumn(
+                    "Average cost",
+                    min_value=0.0,
+                    format="$%.2f",
+                ),
             },
         )
         if st.button(
@@ -183,8 +259,9 @@ def render_demo_portfolio() -> None:
         """
 <div class="mf-session-note">
 <strong>Portfolio persistence is an account feature.</strong>
-Standard will keep holdings and cost basis securely attached to your account across sessions and devices.
+Standard keeps holdings and cost basis securely attached to your account across sessions and devices.
 </div>
         """,
         unsafe_allow_html=True,
     )
+
