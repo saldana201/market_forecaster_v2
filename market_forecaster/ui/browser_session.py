@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import MutableMapping
 
 import streamlit as st
@@ -35,7 +36,7 @@ export default function({ data, setStateValue }) {
         handle = "";
     }
 
-    setStateValue("snapshot", { ready: true, handle });
+    setStateValue("snapshot_json", JSON.stringify({ ready: true, handle }));
 }
 """
 
@@ -75,12 +76,15 @@ def render_browser_session_bridge(state: MutableMapping) -> BrowserStorageSnapsh
             "action": action,
             "value": value,
         },
-        default={"snapshot": {"ready": False, "handle": ""}},
-        on_snapshot_change=lambda: None,
+        default={"snapshot_json": '{"ready":false,"handle":""}'},
+        on_snapshot_json_change=lambda: None,
         key=BROWSER_STORAGE_COMPONENT_KEY,
     )
 
-    snapshot = result.snapshot if isinstance(result.snapshot, dict) else {}
+    try:
+        snapshot = json.loads(str(result.snapshot_json or "{}"))
+    except Exception:
+        snapshot = {}
     ready = bool(snapshot.get("ready"))
     handle = str(snapshot.get("handle") or "")
 
