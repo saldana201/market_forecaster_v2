@@ -181,11 +181,14 @@ class SupabaseAuthProvider:
         )
 
     def refresh_session(self, refresh_token: str) -> AuthResult:
-        result = self._request(
-            "/auth/v1/token?grant_type=refresh_token",
-            method="POST",
-            payload={"refresh_token": str(refresh_token or "").strip()},
-        )
+        try:
+            result = self._request(
+                "/auth/v1/token?grant_type=refresh_token",
+                method="POST",
+                payload={"refresh_token": str(refresh_token or "").strip()},
+            )
+        except InvalidCredentials as exc:
+            raise InvalidToken(str(exc)) from exc
         return AuthResult(
             user=self._user(result.get("user")),
             tokens=self._tokens(result),
