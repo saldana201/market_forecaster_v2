@@ -24,7 +24,10 @@ from market_forecaster.services.shared_authority_store import (
 from market_forecaster.services.shared_contract_store import (
     shared_read_configuration_status,
 )
-from market_forecaster.services.subscriptions import subscription_configuration_status
+from market_forecaster.services.subscriptions import (
+    stripe_catalog_status,
+    subscription_configuration_status,
+)
 from market_forecaster.services.user_data import persistence_configuration_status
 
 
@@ -123,15 +126,49 @@ def evaluate_readiness(*, require_billing: bool = False) -> dict:
         )
     )
 
+    billing_required = require_billing or SUBSCRIPTIONS_ENABLED
     billing_ready, billing_reason = subscription_configuration_status()
     checks.append(
         _check(
             "stripe_subscriptions",
             billing_ready,
-            require_billing or SUBSCRIPTIONS_ENABLED,
+            billing_required,
             "ready" if billing_ready else billing_reason,
         )
     )
+
+    if billing_required and billing_ready:
+        try:
+            catalog_ready, catalog_reason = stripe_catalog_status()
+        except Exception as exc:
+            catalog_ready = False
+            catalog_reason = f"Stripe catalog check failed: {type(exc).__name__}"
+        checks.append(
+            _check(
+                "stripe_price_catalog",
+                catalog_ready,
+                True,
+                "ready" if catalog_ready else catalog_reason,
+            )
+        )
+    elif billing_required:
+        checks.append(
+            _check(
+                "stripe_price_catalog",
+                False,
+                True,
+                "Skipped because Stripe subscription configuration is not ready.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "stripe_price_catalog",
+                False,
+                False,
+                "Not checked while subscriptions are disabled.",
+            )
+        )
 
     try:
         api_settings = load_settings()
