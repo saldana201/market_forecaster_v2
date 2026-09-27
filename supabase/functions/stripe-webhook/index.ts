@@ -14,6 +14,7 @@ const ALLOWED_STATUSES = new Set([
   "paused",
 ]);
 const ALLOWED_PLANS = new Set(["demo", "standard", "pro"]);
+const PAID_PLANS = new Set(["standard", "pro"]);
 
 function hex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes))
@@ -83,6 +84,18 @@ function isoFromUnix(value: unknown): string | null {
   return new Date(seconds * 1000).toISOString();
 }
 
+function stripeId(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized || null;
+  }
+  if (value && typeof value === "object" && "id" in value) {
+    const normalized = String((value as { id?: unknown }).id || "").trim();
+    return normalized || null;
+  }
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -114,29 +127,49 @@ Deno.serve(async (req: Request) => {
 
   const type = String(event?.type || "");
   const obj = event?.data?.object || {};
+  let applied: boolean | null = null;
 
   try {
     if (type === "checkout.session.completed") {
       const userId = String(
         obj.client_reference_id || obj.metadata?.user_id || "",
       ).trim();
+
       if (userId) {
         const plan = normalizePlan(obj.metadata?.plan);
+        if (!PAID_PLANS.has(plan)) {
+          return new Response("Missing or invalid checkout plan metadata", {
+            status: 400,
+          });
+        }
+
+        const { data: existing, error: existingError } = await supabase
+          .from("subscriptions")
+          .select("status")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (existingError) throw existingError;
+
+        // Checkout completion links Stripe identifiers, but the Subscription
+        // object remains the authority for entitlement status. Preserve an
+        // already-applied subscription status if Stripe delivered that event
+        // before checkout.session.completed.
+        const currentStatus = normalizeStatus(existing?.status);
+        const checkoutStatus =
+          currentStatus === "none" ? "incomplete" : currentStatus;
+
         const { error } = await supabase.from("subscriptions").upsert(
           {
             user_id: userId,
             plan,
-            status: "incomplete",
-            stripe_customer_id:
-              typeof obj.customer === "string" ? obj.customer : obj.customer?.id || null,
-            stripe_subscription_id:
-              typeof obj.subscription === "string"
-                ? obj.subscription
-                : obj.subscription?.id || null,
+            status: checkoutStatus,
+            stripe_customer_id: stripeId(obj.customer),
+            stripe_subscription_id: stripeId(obj.subscription),
           },
           { onConflict: "user_id" },
         );
         if (error) throw error;
+        applied = true;
       }
     }
 
@@ -145,41 +178,73 @@ Deno.serve(async (req: Request) => {
       type === "customer.subscription.updated" ||
       type === "customer.subscription.deleted"
     ) {
+      const eventId = String(event?.id || "").trim();
+      const eventCreatedAt = isoFromUnix(event?.created);
+      if (!eventId || !eventCreatedAt) {
+        return new Response("Stripe event id/created timestamp is required", {
+          status: 400,
+        });
+      }
+
       let userId = String(obj.metadata?.user_id || "").trim();
+      let existingPlan: string | null = null;
 
       if (!userId && obj.id) {
         const { data, error } = await supabase
           .from("subscriptions")
-          .select("user_id")
+          .select("user_id, plan")
           .eq("stripe_subscription_id", String(obj.id))
           .maybeSingle();
         if (error) throw error;
         userId = String(data?.user_id || "").trim();
+        existingPlan = data?.plan ? normalizePlan(data.plan) : null;
       }
 
       if (userId) {
+        let plan = normalizePlan(obj.metadata?.plan);
+        if (!PAID_PLANS.has(plan)) {
+          if (!existingPlan) {
+            const { data, error } = await supabase
+              .from("subscriptions")
+              .select("plan")
+              .eq("user_id", userId)
+              .maybeSingle();
+            if (error) throw error;
+            existingPlan = data?.plan ? normalizePlan(data.plan) : null;
+          }
+          plan = existingPlan || "demo";
+        }
+
+        if (!PAID_PLANS.has(plan)) {
+          return new Response("Missing or invalid subscription plan metadata", {
+            status: 400,
+          });
+        }
+
         const status =
           type === "customer.subscription.deleted"
             ? "canceled"
             : normalizeStatus(obj.status);
         const priceId = obj.items?.data?.[0]?.price?.id || null;
-        const plan = normalizePlan(obj.metadata?.plan);
 
-        const { error } = await supabase.from("subscriptions").upsert(
+        const { data, error } = await supabase.rpc(
+          "apply_market_forecaster_subscription_event",
           {
-            user_id: userId,
-            plan,
-            status,
-            stripe_customer_id:
-              typeof obj.customer === "string" ? obj.customer : obj.customer?.id || null,
-            stripe_subscription_id: obj.id || null,
-            stripe_price_id: priceId,
-            current_period_end: isoFromUnix(obj.current_period_end),
-            cancel_at_period_end: Boolean(obj.cancel_at_period_end),
+            p_user_id: userId,
+            p_plan: plan,
+            p_status: status,
+            p_stripe_customer_id: stripeId(obj.customer),
+            p_stripe_subscription_id: stripeId(obj.id),
+            p_stripe_price_id: priceId,
+            p_current_period_end: isoFromUnix(obj.current_period_end),
+            p_cancel_at_period_end: Boolean(obj.cancel_at_period_end),
+            p_stripe_event_id: eventId,
+            p_stripe_event_type: type,
+            p_stripe_event_created_at: eventCreatedAt,
           },
-          { onConflict: "user_id" },
         );
         if (error) throw error;
+        applied = data === true;
       }
     }
   } catch (err) {
@@ -187,8 +252,15 @@ Deno.serve(async (req: Request) => {
     return new Response("Persistence failed", { status: 500 });
   }
 
-  return new Response(JSON.stringify({ received: true }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({
+      received: true,
+      applied,
+      ignored_stale_event: applied === false,
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 });
