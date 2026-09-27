@@ -30,7 +30,8 @@ def test_checkout_completion_does_not_downgrade_existing_subscription_status():
 
     assert 'select("status")' in source
     assert 'currentStatus === "none" ? "incomplete" : currentStatus' in source
-    assert "Subscription object remains the authority for entitlement status" in source
+    assert 'const checkoutStatus =' in source
+    assert 'status: checkoutStatus' in source
 
 
 def test_subscription_events_use_atomic_ordering_rpc():
