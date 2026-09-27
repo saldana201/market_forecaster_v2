@@ -10,6 +10,17 @@ Set this in Supabase Edge Function secrets before registering the endpoint with 
 
 Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to deployed Edge Functions.
 
+## Database migration
+
+Apply the subscription webhook ordering migration before deploying this function:
+
+    supabase/migrations/20260927091000_subscription_webhook_ordering.sql
+
+It adds the last-applied Stripe event metadata to `public.subscriptions` and a
+service-role-only RPC that rejects older subscription snapshots. Stripe does not
+guarantee webhook delivery order, so this prevents an older event from overwriting
+a newer subscription state.
+
 ## Deploy
 
 Deploy with JWT verification disabled because Stripe does not send a Supabase JWT.
@@ -33,6 +44,21 @@ The Checkout Session and Subscription metadata must contain:
 - plan — standard or pro
 
 Market Forecaster's checkout creator adds both automatically.
+
+## Event ordering and retries
+
+Stripe can retry events and can deliver related events out of order.
+
+Market Forecaster treats `customer.subscription.*` snapshots as the authority for
+subscription status. Each authoritative event stores its Stripe event ID, event type,
+and Stripe-created timestamp. Older snapshots are acknowledged but ignored.
+
+`checkout.session.completed` links the Stripe customer/subscription identifiers but
+does not downgrade a subscription status that was already applied by a subscription
+event. This specifically protects the case where `customer.subscription.created`
+arrives before `checkout.session.completed`.
+
+Duplicate delivery of the latest event is safe and idempotent.
 
 ## Security
 
