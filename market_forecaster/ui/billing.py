@@ -6,6 +6,7 @@ import streamlit as st
 from market_forecaster.billing.stripe_client import BillingError
 from market_forecaster.core.session_identity import resolve_identity
 from market_forecaster.services.subscriptions import (
+    ENTITLED_STATUSES,
     create_checkout_url,
     create_portal_url,
     load_subscription,
@@ -14,6 +15,7 @@ from market_forecaster.services.subscriptions import (
     stripe_catalog_diagnostics,
     subscription_configuration_diagnostics,
     subscription_configuration_status,
+    sync_subscription_identity,
 )
 
 
@@ -36,6 +38,23 @@ def _status_label(status: str) -> str:
 
 
 PLAN_OPTIONS = ("Standard", "Pro")
+
+
+def _timestamp_label(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "Not yet"
+    return raw.replace("T", " ")[:19] + (" UTC" if "Z" in raw or "+" in raw else "")
+
+
+def _subscription_sync_details(subscription: dict | None) -> dict[str, str]:
+    row = subscription or {}
+    return {
+        "period_end": _timestamp_label(row.get("current_period_end")),
+        "event_type": str(row.get("stripe_event_type") or "Not yet"),
+        "event_time": _timestamp_label(row.get("stripe_event_created_at")),
+        "cancel_at_period_end": "Yes" if row.get("cancel_at_period_end") else "No",
+    }
 
 
 def render_plan_selector(*, title: str = "Choose your subscription tier") -> str:
@@ -110,6 +129,10 @@ def capture_billing_return() -> None:
         return
 
     st.session_state["billing_return_notice"] = result
+    if result == "success":
+        st.session_state["billing_sync_pending"] = True
+    else:
+        st.session_state.pop("billing_sync_pending", None)
     st.session_state.pop("billing_checkout_url", None)
     st.session_state.pop("billing_checkout_plan", None)
 
@@ -121,13 +144,41 @@ def capture_billing_return() -> None:
 
 def render_billing_return_notice() -> None:
     result = st.session_state.pop("billing_return_notice", None)
-    if result == "success":
-        st.success(
-            "Stripe Checkout returned successfully. Subscription status may take a few seconds "
-            "to synchronize from the signed webhook."
-        )
-    elif result == "cancel":
+    if result == "cancel":
+        st.session_state.pop("billing_sync_pending", None)
         st.info("Stripe Checkout was canceled. No subscription change was made.")
+        return
+
+    pending = bool(st.session_state.get("billing_sync_pending"))
+    if result != "success" and not pending:
+        return
+
+    identity = resolve_identity(st.session_state)
+    if identity.subscription_status in ENTITLED_STATUSES:
+        st.session_state.pop("billing_sync_pending", None)
+        st.success(
+            f"Stripe confirmed the subscription. {identity.plan.title()} access is active."
+        )
+        return
+
+    st.info(
+        "Stripe Checkout returned successfully. Market Forecaster is waiting for the signed "
+        "Stripe webhook to confirm the subscription before paid access is unlocked."
+    )
+    st.caption(
+        f"Current billing status: {_status_label(identity.subscription_status)}. "
+        "If Stripe has already delivered the webhook, refresh the subscription state below."
+    )
+
+    if st.button(
+        "Refresh subscription status",
+        key="billing_return_refresh_status",
+        type="primary",
+    ):
+        refreshed = sync_subscription_identity(st.session_state, identity)
+        if refreshed.subscription_status in ENTITLED_STATUSES:
+            st.session_state.pop("billing_sync_pending", None)
+        st.rerun()
 
 
 def render_upgrade_handoff() -> None:
@@ -275,12 +326,35 @@ def render_billing_panel() -> None:
         except Exception:
             subscription = None
 
+        details = _subscription_sync_details(subscription)
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            st.metric("Current period ends", details["period_end"])
+        with d2:
+            st.metric("Cancel at period end", details["cancel_at_period_end"])
+        with d3:
+            st.metric("Last billing sync", details["event_time"])
+
+        if details["event_type"] != "Not yet":
+            st.caption(f"Last Stripe event: {details['event_type']}")
+
         if subscription and subscription.get("cancel_at_period_end"):
             st.warning("This subscription is set to cancel at the end of the current billing period.")
 
-        st.caption(
-            "Payments are handled on Stripe-hosted pages. Market Forecaster never stores card numbers."
-        )
+        refresh_col, note_col = st.columns([1, 2.2])
+        with refresh_col:
+            if st.button(
+                "Refresh billing status",
+                key="billing_panel_refresh_status",
+                use_container_width=True,
+            ):
+                sync_subscription_identity(st.session_state, identity)
+                st.rerun()
+        with note_col:
+            st.caption(
+                "Payments are handled on Stripe-hosted pages. Market Forecaster never stores card numbers. "
+                "Paid access follows the signed webhook-backed subscription authority."
+            )
 
         already_active = requested_plan_is_satisfied(identity, selected_plan)
         if already_active:
