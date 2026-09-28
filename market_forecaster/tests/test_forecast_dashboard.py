@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from market_forecaster.ui.forecast_dashboard import (
+    _forecast_contract_json,
+    _forecast_export_filename,
+    _forecast_export_frame,
     evidence_quality,
     expected_range,
     outlook_label,
@@ -62,3 +65,63 @@ def test_summary_uses_plain_language_not_research_jargon():
     assert "64%" in text
     assert "OOS" not in text
     assert "Brier" not in text
+
+
+
+def test_forecast_export_frame_flattens_canonical_horizons():
+    contract = {
+        "ticker": "aapl",
+        "contract_id": "contract-123",
+        "generated_at": "2026-09-27T20:00:00Z",
+        "as_of": "2026-09-27",
+        "current_price": 100.0,
+        "forecasts": [
+            {
+                **_row(5, expected=1.2, probability=58.0),
+                "model": "ridge",
+                "calibration_status": "CALIBRATED",
+            },
+            {
+                **_row(1, expected=0.4, probability=54.0),
+                "model": "prophet",
+                "calibration_status": "CALIBRATED",
+            },
+        ],
+    }
+
+    frame = _forecast_export_frame(contract)
+
+    assert list(frame["horizon_days"]) == [1, 5]
+    assert list(frame["ticker"]) == ["AAPL", "AAPL"]
+    assert frame.iloc[0]["contract_id"] == "contract-123"
+    assert frame.iloc[0]["current_price"] == 100.0
+    assert frame.iloc[0]["price_range_80_low"] == 95.0
+    assert frame.iloc[0]["price_range_80_high"] == 108.0
+    assert frame.iloc[0]["evidence"] == "Strong"
+
+
+def test_forecast_export_filename_is_ticker_and_date_scoped():
+    contract = {
+        "ticker": "msft",
+        "generated_at": "2026-09-27T20:00:00Z",
+    }
+
+    assert (
+        _forecast_export_filename(contract, "csv")
+        == "MSFT_forecast_contract_2026-09-27.csv"
+    )
+
+
+def test_forecast_contract_json_preserves_full_contract():
+    contract = {
+        "ticker": "SPY",
+        "contract_id": "contract-xyz",
+        "forecasts": [{"horizon_days": 10, "diagnostics": {"brier_score": 0.21}}],
+        "data_quality": {"provider": "yfinance"},
+    }
+
+    exported = _forecast_contract_json(contract)
+
+    assert '"contract_id": "contract-xyz"' in exported
+    assert '"brier_score": 0.21' in exported
+    assert '"provider": "yfinance"' in exported
