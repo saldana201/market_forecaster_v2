@@ -78,6 +78,22 @@ function normalizeStatus(value: unknown): string {
   return ALLOWED_STATUSES.has(status) ? status : "none";
 }
 
+function planFromPriceId(value: unknown): string | null {
+  const priceId = String(value || "").trim();
+  if (!priceId) return null;
+
+  const standardPrice = String(
+    Deno.env.get("STRIPE_STANDARD_PRICE_ID") || "",
+  ).trim();
+  const proPrice = String(
+    Deno.env.get("STRIPE_PRO_PRICE_ID") || "",
+  ).trim();
+
+  if (standardPrice && priceId === standardPrice) return "standard";
+  if (proPrice && priceId === proPrice) return "pro";
+  return null;
+}
+
 function isoFromUnix(value: unknown): string | null {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
@@ -201,7 +217,10 @@ Deno.serve(async (req: Request) => {
       }
 
       if (userId) {
-        let plan = normalizePlan(obj.metadata?.plan);
+        const priceId = obj.items?.data?.[0]?.price?.id || null;
+        let plan =
+          planFromPriceId(priceId) || normalizePlan(obj.metadata?.plan);
+
         if (!PAID_PLANS.has(plan)) {
           if (!existingPlan) {
             const { data, error } = await supabase
@@ -216,16 +235,16 @@ Deno.serve(async (req: Request) => {
         }
 
         if (!PAID_PLANS.has(plan)) {
-          return new Response("Missing or invalid subscription plan metadata", {
-            status: 400,
-          });
+          return new Response(
+            "Missing or invalid subscription plan/price mapping",
+            { status: 400 },
+          );
         }
 
         const status =
           type === "customer.subscription.deleted"
             ? "canceled"
             : normalizeStatus(obj.status);
-        const priceId = obj.items?.data?.[0]?.price?.id || null;
 
         const { data, error } = await supabase.rpc(
           "apply_market_forecaster_subscription_event",

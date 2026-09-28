@@ -327,9 +327,39 @@ def create_checkout_url(
     user_id = verified_owner_id(identity)
     profile = state.get(AUTH_PROFILE_KEY)
     email = profile.get("email") if isinstance(profile, dict) else None
+
+    try:
+        existing = load_subscription(state, identity)
+    except PersistenceError as exc:
+        raise BillingError(
+            "Unable to verify the current subscription. Checkout is blocked to "
+            "prevent a duplicate recurring subscription."
+        ) from exc
+
+    existing_status = str((existing or {}).get("status") or "none").lower()
+    existing_plan = str((existing or {}).get("plan") or "demo").lower()
+    existing_subscription_id = str(
+        (existing or {}).get("stripe_subscription_id") or ""
+    ).strip()
+    existing_customer_id = str(
+        (existing or {}).get("stripe_customer_id") or ""
+    ).strip()
+
+    if existing_status in ENTITLED_STATUSES and existing_subscription_id:
+        if existing_plan == plan:
+            raise BillingError(
+                f"{plan.title()} is already active on this account."
+            )
+        raise BillingError(
+            f"An active {existing_plan.title()} subscription already exists. "
+            "Use the Stripe billing portal to change plans so Market Forecaster "
+            "does not create a second recurring subscription."
+        )
+
     result = StripeBillingClient(_stripe_secret()).create_checkout_session(
         user_id=user_id,
         email=email,
+        customer_id=existing_customer_id or None,
         plan=plan,
         price_id=_price_id(plan),
         success_url=f"{_public_url()}/?billing=success",

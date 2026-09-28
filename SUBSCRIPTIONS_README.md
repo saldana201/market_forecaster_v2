@@ -40,11 +40,18 @@ The Stripe webhook is checked in at:
 
     supabase/functions/stripe-webhook
 
-Configure `STRIPE_WEBHOOK_SECRET` in Supabase, deploy with `--no-verify-jwt`, and
-register the deployed HTTPS URL as a Stripe webhook/event destination.
+Configure the webhook secret plus the Standard/Pro Price IDs in Supabase, deploy
+with `--no-verify-jwt`, and register the deployed HTTPS URL as a Stripe
+webhook/event destination:
+
+    STRIPE_WEBHOOK_SECRET=whsec_...
+    STRIPE_STANDARD_PRICE_ID=price_...
+    STRIPE_PRO_PRICE_ID=price_...
 
 The function verifies Stripe's signature before using the service role to update
-subscription authority.
+subscription authority. Price IDs are also used to resolve portal-driven plan
+changes so a stale subscription metadata value cannot keep the wrong Market
+Forecaster tier.
 
 ## Access model
 
@@ -55,10 +62,18 @@ subscription authority.
 - Billing enabled + no valid subscription: Demo entitlements, even if signed in.
 - Browser users can SELECT only their own subscription row; they cannot write plan/status.
 
-## Checkout
+## Checkout and plan changes
 
-The app uses Stripe-hosted Checkout and Customer Portal. Card details are never collected
-or stored by Market Forecaster.
+The app uses Stripe-hosted Checkout and Customer Portal. Card details are never
+collected or stored by Market Forecaster.
+
+Checkout is only used when the account does not already have an entitled paid
+subscription. If an active Standard or Pro subscription exists, Market Forecaster
+routes plan changes through Stripe Customer Portal instead of creating a second
+recurring subscription.
+
+When a previously canceled account subscribes again, Market Forecaster reuses the
+existing Stripe Customer ID when available instead of creating another customer.
 
 
 ## Activation diagnostics

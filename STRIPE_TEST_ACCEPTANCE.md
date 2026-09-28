@@ -28,6 +28,11 @@ Then deploy:
 The Edge Function must have:
 
     STRIPE_WEBHOOK_SECRET=whsec_...
+    STRIPE_STANDARD_PRICE_ID=<same Standard test price used by Azure>
+    STRIPE_PRO_PRICE_ID=<same Pro test price used by Azure>
+
+The Price IDs let portal-driven plan changes map back to Standard/Pro even when
+Stripe subscription metadata still contains the previous plan.
 
 The function uses Supabase-provided `SUPABASE_URL` and
 `SUPABASE_SERVICE_ROLE_KEY`.
@@ -108,12 +113,22 @@ Stripe may retry or reorder events. Verify that:
 
 ## 9. Customer Portal test
 
+Before testing plan changes, configure Stripe Customer Portal to allow customers
+to switch between the Standard and Pro recurring products/prices.
+
 For an account with a Stripe customer ID:
 
 1. Open the billing portal.
-2. Change/cancel the test subscription.
-3. Return to Market Forecaster.
-4. Confirm webhook synchronization updates plan/status correctly.
+2. Schedule cancellation at period end and confirm Market Forecaster keeps paid
+   access while `cancel_at_period_end=true`.
+3. Reverse the cancellation and confirm the flag returns to false.
+4. Change Standard -> Pro or Pro -> Standard through the portal.
+5. Return to Market Forecaster and refresh billing status.
+6. Confirm the webhook resolves the new plan from the Stripe Price ID.
+7. Confirm the app did not create a second active recurring subscription.
+
+Market Forecaster intentionally blocks a second Checkout while an entitled paid
+subscription already exists. Active plan changes belong in the Customer Portal.
 
 ## 10. Live cutover
 
@@ -126,6 +141,8 @@ At cutover, change these together:
     STRIPE_STANDARD_PRICE_ID=<live Standard price>
     STRIPE_PRO_PRICE_ID=<live Pro price>
     STRIPE_WEBHOOK_SECRET=<live event destination signing secret>
+    STRIPE_STANDARD_PRICE_ID=<live Standard price in Supabase Edge Function config>
+    STRIPE_PRO_PRICE_ID=<live Pro price in Supabase Edge Function config>
 
 Keep `MARKET_FORECASTER_PUBLIC_URL` on HTTPS.
 
