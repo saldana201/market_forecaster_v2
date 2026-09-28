@@ -51,7 +51,7 @@ def render_api_access_panel() -> None:
             st.warning(
                 "Copy this API key now. Market Forecaster stores only a hash and cannot show the full key again."
             )
-            st.code(str(created["api_key"]), language=None)
+            st.code(str(created["api_key"]), language="text")
             st.caption(
                 f"Key name: {created.get('name') or 'API key'} · "
                 f"Prefix: {created.get('key_prefix') or '—'}"
@@ -130,7 +130,7 @@ def render_api_access_panel() -> None:
 
         st.markdown("---")
         st.markdown("**Using a key**")
-        st.code("X-API-Key: mfk_...", language=None)
+        st.code("X-API-Key: mfk_...", language="text")
         st.caption(
             "Send the key in the X-API-Key header. Each request re-checks the key and current Pro "
             "subscription authority. Revoked keys and accounts without active Pro access fail closed."
