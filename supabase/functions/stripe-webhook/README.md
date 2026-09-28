@@ -2,11 +2,18 @@
 
 This Edge Function is the trusted writer for `public.subscriptions`.
 
-## Required secret
+## Required Edge Function configuration
 
-Set this in Supabase Edge Function secrets before registering the endpoint with Stripe:
+Set these in Supabase Edge Function secrets/environment before registering the endpoint with Stripe:
 
     STRIPE_WEBHOOK_SECRET=whsec_...
+    STRIPE_STANDARD_PRICE_ID=price_...
+    STRIPE_PRO_PRICE_ID=price_...
+
+The two Price IDs are not sensitive, but keeping the mapping beside the webhook lets
+`customer.subscription.updated` resolve Standard vs Pro when a customer changes plans
+through Stripe Customer Portal. Price mapping takes precedence over stale subscription
+metadata.
 
 Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to deployed Edge Functions.
 
@@ -44,6 +51,10 @@ The Checkout Session and Subscription metadata must contain:
 - plan — standard or pro
 
 Market Forecaster's checkout creator adds both automatically.
+
+For Customer Portal plan changes, the webhook derives the plan from the configured
+Standard/Pro Stripe Price IDs because Stripe preserves existing subscription metadata
+when the subscription item is changed.
 
 ## Event ordering and retries
 
