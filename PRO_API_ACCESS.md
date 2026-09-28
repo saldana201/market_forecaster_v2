@@ -62,7 +62,10 @@ Send a customer key in:
 
 Example:
 
-    curl -H "X-API-Key: mfk_..." https://<api-host>/api/v1/health
+    curl -X POST https://<api-host>/api/v1/forecast \
+      -H "X-API-Key: mfk_..." \
+      -H "Content-Type: application/json" \
+      -d '{"ticker":"AAPL"}'
 
 /api/v1/health and /api/v1/ready remain operational endpoints and do not require API authentication. Protected forecasting/research routes use the customer key.
 
