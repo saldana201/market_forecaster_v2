@@ -215,33 +215,77 @@ def render_upgrade_handoff() -> None:
             )
             return
 
-        if st.session_state.get("billing_checkout_plan") != requested:
-            st.session_state.pop("billing_checkout_url", None)
-            st.session_state["billing_checkout_plan"] = requested
+        existing_subscription = None
+        try:
+            existing_subscription = load_subscription(st.session_state, identity)
+        except Exception:
+            existing_subscription = None
 
-        if st.button(
-            f"Prepare {requested.title()} Checkout",
-            key=f"prepare_requested_{requested}_checkout",
-            type="primary",
-            use_container_width=True,
-        ):
-            try:
-                st.session_state["billing_checkout_url"] = create_checkout_url(
-                    st.session_state,
-                    identity,
-                    requested,
-                )
-            except BillingError as exc:
-                st.error(str(exc))
+        existing_customer_id = str(
+            (existing_subscription or {}).get("stripe_customer_id") or ""
+        ).strip()
+        has_active_paid_subscription = (
+            identity.subscription_status in ENTITLED_STATUSES
+            and identity.plan in PAID_PLANS
+            and bool(existing_customer_id)
+        )
 
-        checkout_url = st.session_state.get("billing_checkout_url")
-        if checkout_url:
-            st.link_button(
-                f"Continue to Stripe for {requested.title()}",
-                str(checkout_url),
+        if has_active_paid_subscription:
+            st.info(
+                f"You already have an active {identity.plan.title()} subscription. "
+                f"Use the Stripe billing portal to change to {requested.title()} so a second "
+                "recurring subscription is not created."
+            )
+            if st.button(
+                f"Change to {requested.title()} in Stripe",
+                key=f"requested_{requested}_portal",
                 type="primary",
                 use_container_width=True,
-            )
+            ):
+                try:
+                    st.session_state["billing_portal_url"] = create_portal_url(
+                        st.session_state,
+                        identity,
+                    )
+                except BillingError as exc:
+                    st.error(str(exc))
+
+            portal_url = st.session_state.get("billing_portal_url")
+            if portal_url:
+                st.link_button(
+                    "Open Stripe billing portal",
+                    str(portal_url),
+                    type="primary",
+                    use_container_width=True,
+                )
+        else:
+            if st.session_state.get("billing_checkout_plan") != requested:
+                st.session_state.pop("billing_checkout_url", None)
+                st.session_state["billing_checkout_plan"] = requested
+
+            if st.button(
+                f"Prepare {requested.title()} Checkout",
+                key=f"prepare_requested_{requested}_checkout",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    st.session_state["billing_checkout_url"] = create_checkout_url(
+                        st.session_state,
+                        identity,
+                        requested,
+                    )
+                except BillingError as exc:
+                    st.error(str(exc))
+
+            checkout_url = st.session_state.get("billing_checkout_url")
+            if checkout_url:
+                st.link_button(
+                    f"Continue to Stripe for {requested.title()}",
+                    str(checkout_url),
+                    type="primary",
+                    use_container_width=True,
+                )
 
         if st.button(
             "Clear upgrade choice",
