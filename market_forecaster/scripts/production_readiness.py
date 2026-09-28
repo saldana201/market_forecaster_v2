@@ -17,6 +17,7 @@ from market_forecaster.config import (
     SUBSCRIPTIONS_ENABLED,
     __version__,
 )
+from market_forecaster.services.api_keys import api_key_store_status
 from market_forecaster.services.forecast_access import demo_cache_status
 from market_forecaster.services.shared_authority_store import (
     shared_authority_read_configuration_status,
@@ -169,6 +170,20 @@ def evaluate_readiness(*, require_billing: bool = False) -> dict:
                 "Not checked while subscriptions are disabled.",
             )
         )
+
+    try:
+        pro_api_ready, pro_api_reason = api_key_store_status()
+    except Exception as exc:
+        pro_api_ready = False
+        pro_api_reason = f"Pro API key store check failed: {type(exc).__name__}"
+    checks.append(
+        _check(
+            "pro_api_key_store",
+            pro_api_ready,
+            billing_required,
+            "ready" if pro_api_ready else pro_api_reason,
+        )
+    )
 
     try:
         api_settings = load_settings()
