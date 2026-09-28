@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -73,12 +74,66 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = Lock()
 
-    async def dispatch(self, request: Request, call_next):
-        if not request.url.path.startswith("/api/v1/") or request.url.path in {
-            "/api/v1/health",
-            "/api/v1/ready",
-        }:
-            return await call_next(request)
+    def _client_keys(self, request: Request) -> list[str]:
+        client_keys = self._client_keys(request)
+
+        if self.shared_limiter is not None:
+            ready, _reason = self.shared_limiter.configured()
+            if ready:
+                try:
+                    for client_key in client_keys:
+                        result = await asyncio.to_thread(
+                            self.shared_limiter.consume,
+                            client_key,
+                        )
+                        if not result.allowed:
+                            request_id = getattr(
+                                request.state,
+                                "request_id",
+                                uuid.uuid4().hex,
+                            )
+                            return JSONResponse(
+                                status_code=429,
+                                content={
+                                    "detail": "Rate limit exceeded",
+                                    "request_id": request_id,
+                                },
+                                headers={
+                                    "Retry-After": str(
+                                        max(1, result.retry_after_seconds)
+                                    )
+                                },
+                            )
+                    return await call_next(request)
+                except SharedRateLimitError as exc:
+                    logger.warning(
+                        "shared_rate_limit_fallback reason=%s",
+                        exc,
+                    )
+
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+
+        with self._lock:
+            buckets = []
+            for client_key in client_keys:
+                bucket = self._hits[client_key]
+                while bucket and bucket[0] < cutoff:
+                    bucket.popleft()
+                buckets.append(bucket)
+
+            if any(len(bucket) >= self.requests for bucket in buckets):
+                request_id = getattr(request.state, "request_id", uuid.uuid4().hex)
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded", "request_id": request_id},
+                    headers={"Retry-After": str(self.window_seconds)},
+                )
+
+            for bucket in buckets:
+                bucket.append(now)
+
+        return await call_next(request)
 
         forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
         client = forwarded or (request.client.host if request.client else "unknown")
