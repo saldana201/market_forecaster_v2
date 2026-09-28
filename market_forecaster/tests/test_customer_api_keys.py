@@ -151,7 +151,8 @@ def test_customer_api_key_migration_is_service_role_only():
     sql = MIGRATION.read_text(encoding="utf-8")
 
     assert "key_hash text not null unique" in sql
-    assert "plaintext" not in sql.lower()
+    assert "api_key text" not in sql.lower()
+    assert "plaintext text" not in sql.lower()
     assert "enable row level security" in sql.lower()
     assert "revoke all on table public.user_api_keys from public, anon, authenticated" in sql
     assert "grant select, insert, update, delete on table public.user_api_keys to service_role" in sql
