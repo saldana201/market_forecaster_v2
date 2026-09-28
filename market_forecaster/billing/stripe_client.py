@@ -81,6 +81,7 @@ class StripeBillingClient:
         *,
         user_id: str,
         email: str | None,
+        customer_id: str | None = None,
         plan: str,
         price_id: str,
         success_url: str,
@@ -99,7 +100,10 @@ class StripeBillingClient:
             "subscription_data[metadata][plan]": plan,
             "allow_promotion_codes": "true",
         }
-        if email:
+        customer_id = str(customer_id or "").strip()
+        if customer_id:
+            fields["customer"] = customer_id
+        elif email:
             fields["customer_email"] = email
         return self._post("checkout/sessions", fields)
 
