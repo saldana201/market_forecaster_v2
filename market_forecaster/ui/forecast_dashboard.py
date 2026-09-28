@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from market_forecaster.config import DEMO_MODE_ENABLED
-from market_forecaster.core.entitlements import can_save_forecast_history
+from market_forecaster.core.entitlements import (
+    can_export_forecast,
+    can_save_forecast_history,
+)
 from market_forecaster.core.forecast_authority import load_authority_config
 from market_forecaster.core.forecast_contract import build_forecast_contract
 from market_forecaster.core.research_snapshots import load_latest_contract
@@ -148,6 +153,61 @@ def _contract_age_text(contract: dict) -> str:
         return f"Updated {int(hours // 24)}d ago"
     except Exception:
         return "Saved forecast"
+
+
+def _forecast_export_frame(contract: dict) -> pd.DataFrame:
+    """Flatten the canonical Forecast Contract into a portable user-facing table."""
+    ticker = str(contract.get("ticker") or "").upper().strip()
+    contract_id = str(contract.get("contract_id") or "")
+    generated_at = contract.get("generated_at")
+    as_of = contract.get("as_of")
+    rows: list[dict] = []
+
+    for row in sorted(
+        contract.get("forecasts", []),
+        key=lambda item: int(item.get("horizon_days", 999)),
+    ):
+        price_range = row.get("price_range_80")
+        low = high = None
+        if isinstance(price_range, list) and len(price_range) == 2:
+            low = _number(price_range[0])
+            high = _number(price_range[1])
+
+        rows.append(
+            {
+                "ticker": ticker,
+                "contract_id": contract_id,
+                "generated_at": generated_at,
+                "as_of": as_of,
+                "horizon_days": int(row.get("horizon_days", 0) or 0),
+                "current_price": _number(contract.get("current_price")),
+                "projected_price": _number(row.get("projected_price")),
+                "expected_return_pct": _number(row.get("expected_return_pct")),
+                "probability_up_pct": _number(row.get("probability_up_pct")),
+                "price_range_80_low": low,
+                "price_range_80_high": high,
+                "evidence": evidence_quality(row),
+                "model": row.get("model"),
+                "calibration_status": row.get("calibration_status"),
+                "calibration_samples": int(row.get("calibration_samples", 0) or 0),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _forecast_export_filename(contract: dict, extension: str) -> str:
+    ticker = str(contract.get("ticker") or "forecast").upper().strip() or "FORECAST"
+    generated = str(contract.get("generated_at") or contract.get("as_of") or "")
+    try:
+        date_label = pd.Timestamp(generated).strftime("%Y-%m-%d")
+    except Exception:
+        date_label = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"{ticker}_forecast_contract_{date_label}.{extension}"
+
+
+def _forecast_contract_json(contract: dict) -> str:
+    return json.dumps(contract, indent=2, default=str, sort_keys=True)
 
 
 def _forecast_table(contract: dict) -> pd.DataFrame:
@@ -380,6 +440,39 @@ def render_forecast_dashboard(current_ticker: str) -> None:
         "A concise interpretation of the current canonical Forecast Contract.",
     )
     st.info(plain_language_summary(contract))
+
+    if identity.authenticated and can_export_forecast(identity):
+        render_section_header(
+            "Export Forecast",
+            "Download the exact canonical forecast in a spreadsheet-friendly CSV or full-fidelity JSON contract.",
+            badge=f"{identity.plan.title()} feature",
+        )
+        export_frame = _forecast_export_frame(contract)
+        export_csv = export_frame.to_csv(index=False)
+        export_json = _forecast_contract_json(contract)
+        csv_col, json_col = st.columns(2)
+        with csv_col:
+            st.download_button(
+                "Download Forecast CSV",
+                data=export_csv,
+                file_name=_forecast_export_filename(contract, "csv"),
+                mime="text/csv",
+                use_container_width=True,
+                key=f"forecast_export_csv_{ticker}_{contract.get('contract_id', '')}",
+            )
+        with json_col:
+            st.download_button(
+                "Download Forecast Contract JSON",
+                data=export_json,
+                file_name=_forecast_export_filename(contract, "json"),
+                mime="application/json",
+                use_container_width=True,
+                key=f"forecast_export_json_{ticker}_{contract.get('contract_id', '')}",
+            )
+        st.caption(
+            "CSV contains one row per canonical horizon for analysis in Excel or other tools. "
+            "JSON preserves the complete Forecast Contract, including diagnostics and metadata."
+        )
 
     with st.expander("Why this forecast?"):
         st.write("Each horizon uses the active Forecast Authority model and approved market information. Probability and price ranges are checked against earlier out-of-sample forecasts.")
