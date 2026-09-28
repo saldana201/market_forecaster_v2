@@ -1,0 +1,184 @@
+name: Deploy Market Forecaster Pro API
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: Existing Azure Web App name for the FastAPI service
+        required: true
+        default: marketforecaster-api
+        type: string
+
+concurrency:
+  group: marketforecaster-api-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6B5948FF98A541699160F65E91D4A6C4 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5B9FC7F1D0CA4531A6678659F1C575E9 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F60C40A3C2E74BF1BF6E1EE01CCA149C }}
+
+      - name: Resolve API App Service
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_NAME='${{ inputs.app_name }}'
+          RESOURCE_GROUP="$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Azure Web App '$APP_NAME' does not exist. Provision the dedicated API App Service first."
+            exit 1
+          fi
+
+          APP_HOST="$(az webapp show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --query defaultHostName -o tsv)"
+
+          echo "APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> "$GITHUB_ENV"
+          echo "APP_HOST=$APP_HOST" >> "$GITHUB_ENV"
+          echo "Resolved dedicated API App Service: $APP_NAME"
+
+      - name: Configure FastAPI runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          az webapp config appsettings set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+              ENABLE_ORYX_BUILD=true > /dev/null
+
+          az webapp config set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --linux-fx-version 'PYTHON|3.12' \
+            --startup-file 'python -m uvicorn market_forecaster.api.main:app --host 0.0.0.0 --port 8000 --workers 1' > /dev/null
+
+      - name: Validate API production configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          require_setting() {
+            local name="$1"
+            local value
+            value="$(az webapp config appsettings list \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$APP_NAME" \
+              --query "[?name=='$name'].value | [0]" \
+              -o tsv)"
+            if [ -z "$value" ]; then
+              echo "::error::Required API App Service setting '$name' is missing or empty."
+              return 1
+            fi
+            echo "Configured: $name"
+          }
+
+          require_setting MARKET_FORECASTER_ENV
+          require_setting MARKET_FORECASTER_API_KEY
+          require_setting MARKET_FORECASTER_ALLOWED_ORIGINS
+          require_setting MARKET_FORECASTER_SUPABASE_URL
+          require_setting MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY
+          require_setting SUBSCRIPTIONS_ENABLED
+
+          environment="$(az webapp config appsettings list \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --query "[?name=='MARKET_FORECASTER_ENV'].value | [0]" \
+            -o tsv | tr '[:upper:]' '[:lower:]')"
+          subscriptions_enabled="$(az webapp config appsettings list \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --query "[?name=='SUBSCRIPTIONS_ENABLED'].value | [0]" \
+            -o tsv | tr '[:upper:]' '[:lower:]')"
+
+          if [ "$environment" != 'production' ]; then
+            echo "::error::MARKET_FORECASTER_ENV must be production on the public API host."
+            exit 1
+          fi
+          if [ "$subscriptions_enabled" != 'true' ]; then
+            echo "::error::SUBSCRIPTIONS_ENABLED must be true before customer Pro API keys can authorize requests."
+            exit 1
+          fi
+
+          echo 'API production configuration preflight passed.'
+
+      - name: Package API application
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip -qr marketforecaster-api.zip . \
+            -x '.git/*' \
+            -x '.github/*' \
+            -x '.patch_backups/*' \
+            -x '__pycache__/*' \
+            -x '*.pyc'
+
+      - name: Deploy FastAPI application
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.APP_NAME }}
+          slot-name: Production
+          package: marketforecaster-api.zip
+
+      - name: Verify API liveness and readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Waiting for https://$APP_HOST/api/v1/health ..."
+          curl --fail --show-error --silent \
+            --retry 18 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            --max-time 20 \
+            "https://$APP_HOST/api/v1/health" > api-health.json
+
+          curl --fail --show-error --silent \
+            --retry 6 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            --max-time 20 \
+            "https://$APP_HOST/api/v1/ready" > api-ready.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          health = json.loads(Path('api-health.json').read_text())
+          ready = json.loads(Path('api-ready.json').read_text())
+          if health.get('status') != 'ok':
+              raise SystemExit('API health endpoint did not report ok')
+          if ready.get('status') != 'ready':
+              raise SystemExit('API readiness endpoint did not report ready')
+          customer = ready.get('pro_customer_api_keys') or {}
+          if not customer.get('configured'):
+              raise SystemExit('Pro customer API key authorization is not configured')
+          print('Market Forecaster Pro API is healthy and customer-key authorization is configured.')
+          PY
+
+      - name: Upload API diagnostics on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketforecaster-api-diagnostics-${{ github.run_id }}
+          path: |
+            api-health.json
+            api-ready.json
+          if-no-files-found: ignore
+          retention-days: 7
