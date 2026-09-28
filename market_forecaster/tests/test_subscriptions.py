@@ -387,3 +387,32 @@ def test_checkout_reuses_customer_after_cancellation(monkeypatch):
     assert url == "https://checkout.stripe.com/reuse"
     assert captured["customer_id"] == "cus_existing"
     assert captured["price_id"] == "price_standard"
+
+
+
+def test_checkout_fails_closed_when_subscription_authority_unavailable(monkeypatch):
+    identity = _identity("demo", "none")
+
+    monkeypatch.setattr(
+        subscriptions,
+        "subscription_configuration_status",
+        lambda: (True, "ready"),
+    )
+    monkeypatch.setattr(
+        subscriptions,
+        "verified_owner_id",
+        lambda _identity: "11111111-1111-4111-8111-111111111111",
+    )
+
+    def fail_load(_state, _identity):
+        raise subscriptions.PersistenceError("temporary outage")
+
+    monkeypatch.setattr(subscriptions, "load_subscription", fail_load)
+
+    try:
+        create_checkout_url({}, identity, "standard")
+    except Exception as exc:
+        assert "checkout is blocked" in str(exc).lower()
+        assert "duplicate recurring subscription" in str(exc).lower()
+    else:
+        raise AssertionError("Expected checkout to fail closed")
