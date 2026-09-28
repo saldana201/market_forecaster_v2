@@ -29,6 +29,7 @@ from market_forecaster.services.user_data import (
     persistence_configuration_status,
     save_user_preferences,
 )
+from market_forecaster.ui.api_access import render_api_access_panel
 from market_forecaster.ui.billing import render_billing_panel, render_plan_selector
 from market_forecaster.ui.browser_session import browser_user_agent
 from market_forecaster.ui.design_system import (
@@ -474,6 +475,8 @@ def _signed_in_account() -> None:
         "Review your plan selection and subscription controls.",
     )
     render_billing_panel()
+
+    render_api_access_panel()
 
     st.markdown("---")
     if st.button("Sign out", key="account_logout", use_container_width=True):
