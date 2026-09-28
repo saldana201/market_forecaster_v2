@@ -49,4 +49,13 @@ def test_webhook_requires_paid_plan_metadata_or_existing_paid_plan():
 
     assert "PAID_PLANS" in source
     assert "Missing or invalid checkout plan metadata" in source
-    assert "Missing or invalid subscription plan metadata" in source
+    assert "Missing or invalid subscription plan/price mapping" in source
+
+
+def test_subscription_plan_changes_prefer_configured_price_mapping():
+    source = WEBHOOK.read_text(encoding="utf-8")
+
+    assert "function planFromPriceId" in source
+    assert 'Deno.env.get("STRIPE_STANDARD_PRICE_ID")' in source
+    assert 'Deno.env.get("STRIPE_PRO_PRICE_ID")' in source
+    assert "planFromPriceId(priceId) || normalizePlan(obj.metadata?.plan)" in source
