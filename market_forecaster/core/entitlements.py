@@ -15,6 +15,7 @@ class PlanEntitlements:
     positions_per_portfolio: int
     expensive_refreshes_per_day: int
     persistent_storage: bool
+    forecast_export: bool
     research_lab: bool
     api_access: bool
 
@@ -27,6 +28,7 @@ ENTITLEMENTS: dict[str, PlanEntitlements] = {
         positions_per_portfolio=10,
         expensive_refreshes_per_day=0,
         persistent_storage=False,
+        forecast_export=False,
         research_lab=False,
         api_access=False,
     ),
@@ -37,6 +39,7 @@ ENTITLEMENTS: dict[str, PlanEntitlements] = {
         positions_per_portfolio=100,
         expensive_refreshes_per_day=50,
         persistent_storage=True,
+        forecast_export=True,
         research_lab=False,
         api_access=False,
     ),
@@ -47,6 +50,7 @@ ENTITLEMENTS: dict[str, PlanEntitlements] = {
         positions_per_portfolio=500,
         expensive_refreshes_per_day=200,
         persistent_storage=True,
+        forecast_export=True,
         research_lab=True,
         api_access=True,
     ),
@@ -55,7 +59,7 @@ ENTITLEMENTS: dict[str, PlanEntitlements] = {
 
 def entitlements_for(identity: AppIdentity) -> PlanEntitlements:
     if identity.is_admin:
-        return PlanEntitlements(True, 10000, 10000, 10000, 10000, True, True, True)
+        return PlanEntitlements(True, 10000, 10000, 10000, 10000, True, True, True, True)
     return ENTITLEMENTS.get(identity.plan, ENTITLEMENTS["demo"])
 
 
@@ -74,6 +78,10 @@ def can_save_portfolio(identity: AppIdentity) -> bool:
 
 def can_save_forecast_history(identity: AppIdentity) -> bool:
     return entitlements_for(identity).persistent_storage
+
+
+def can_export_forecast(identity: AppIdentity) -> bool:
+    return entitlements_for(identity).forecast_export
 
 
 def can_view_research_lab(identity: AppIdentity) -> bool:
