@@ -49,6 +49,7 @@ from market_forecaster.config import (
 )
 from market_forecaster.core.ensemble import ARIMA_AVAILABLE, LSTM_AVAILABLE
 from market_forecaster.core.xgb_multihorizon import XGBOOST_AVAILABLE
+from market_forecaster.services.api_keys import api_key_store_configuration_status
 from market_forecaster.services.shared_authority_store import (
     shared_authority_read_configuration_status,
 )
@@ -147,6 +148,7 @@ async def ready():
     # Import/config validation happens at module import. Report optional model state here.
     shared_ready, shared_reason = shared_read_configuration_status()
     authority_ready, authority_reason = shared_authority_read_configuration_status()
+    pro_api_ready, pro_api_reason = api_key_store_configuration_status()
     rate_limit_ready, rate_limit_reason = shared_rate_limiter.configured()
     return {
         "status": "ready",
@@ -169,6 +171,11 @@ async def ready():
                 "local_fallback" if SHARED_AUTHORITY_ENABLED else "disabled"
             ),
             "reason": None if authority_ready else authority_reason,
+        },
+        "pro_customer_api_keys": {
+            "configured": pro_api_ready,
+            "status": "configured" if pro_api_ready else "unavailable",
+            "reason": None if pro_api_ready else pro_api_reason,
         },
         "shared_api_rate_limit": {
             "enabled": settings.shared_rate_limit_enabled,
