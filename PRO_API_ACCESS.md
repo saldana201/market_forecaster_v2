@@ -95,6 +95,12 @@ which runs:
 
 Before advertising a public Pro API endpoint, deploy that FastAPI container (or an equivalent FastAPI App Service) on its own HTTPS API hostname and configure the same Supabase service-role setting used for customer API authorization.
 
+The repository includes a manual-only GitHub workflow:
+
+    .github/workflows/deploy_marketforecaster_api.yml
+
+It deliberately does not create Azure resources. Provision the dedicated Azure Web App first, configure its required settings, then run **Deploy Market Forecaster Pro API** from GitHub Actions.
+
 Minimum API-host settings include:
 
     MARKET_FORECASTER_ENV=production
@@ -105,6 +111,12 @@ Minimum API-host settings include:
     SUBSCRIPTIONS_ENABLED=true
 
 Never expose the Supabase service-role key or internal API key to browser code.
+
+After the API host is healthy, set this non-secret setting on the Streamlit UI App Service:
+
+    MARKET_FORECASTER_API_PUBLIC_URL=https://<api-host>
+
+The Account -> API Access panel will then show the API base URL and a link to the FastAPI documentation. There is intentionally no fallback to the Streamlit hostname because the UI host does not serve FastAPI routes.
 
 ## Production readiness
 
