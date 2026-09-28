@@ -7,6 +7,7 @@ from market_forecaster.billing.stripe_client import BillingError
 from market_forecaster.core.session_identity import resolve_identity
 from market_forecaster.services.subscriptions import (
     ENTITLED_STATUSES,
+    PAID_PLANS,
     create_checkout_url,
     create_portal_url,
     load_subscription,
@@ -356,9 +357,37 @@ def render_billing_panel() -> None:
                 "Paid access follows the signed webhook-backed subscription authority."
             )
 
-        already_active = requested_plan_is_satisfied(identity, selected_plan)
-        if already_active:
+        customer_id = str((subscription or {}).get("stripe_customer_id") or "").strip()
+        has_active_paid_subscription = (
+            identity.subscription_status in ENTITLED_STATUSES
+            and identity.plan in PAID_PLANS
+            and bool(customer_id)
+        )
+        exact_plan_active = (
+            has_active_paid_subscription and identity.plan == selected_plan
+        )
+
+        if exact_plan_active:
             st.success(f"{selected_plan.title()} access is already active on this account.")
+        elif has_active_paid_subscription:
+            st.info(
+                f"You currently have an active {identity.plan.title()} subscription. "
+                f"To change to {selected_plan.title()}, use the Stripe billing portal. "
+                "Market Forecaster blocks a second Checkout subscription to prevent duplicate recurring charges."
+            )
+            if st.button(
+                f"Change {identity.plan.title()} plan in Stripe",
+                key="billing_change_plan_portal",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    st.session_state["billing_portal_url"] = create_portal_url(
+                        st.session_state,
+                        identity,
+                    )
+                except BillingError as exc:
+                    st.error(str(exc))
         elif st.button(
             f"Prepare {selected_plan.title()} Checkout",
             key="billing_selected_plan_checkout",
@@ -379,7 +408,11 @@ def render_billing_panel() -> None:
         checkout_plan = normalize_requested_plan(
             st.session_state.get("billing_checkout_plan")
         )
-        if checkout_url and checkout_plan == selected_plan:
+        if (
+            not has_active_paid_subscription
+            and checkout_url
+            and checkout_plan == selected_plan
+        ):
             st.link_button(
                 f"Continue to Stripe for {selected_plan.title()}",
                 str(checkout_url),
@@ -387,7 +420,6 @@ def render_billing_panel() -> None:
                 use_container_width=True,
             )
 
-        customer_id = str((subscription or {}).get("stripe_customer_id") or "").strip()
         if customer_id:
             if st.button(
                 "Open billing portal",
@@ -405,7 +437,7 @@ def render_billing_panel() -> None:
             portal_url = st.session_state.get("billing_portal_url")
             if portal_url:
                 st.link_button(
-                    "Manage payment method / cancel subscription",
+                    "Manage subscription / payment method",
                     str(portal_url),
                     use_container_width=True,
                 )
