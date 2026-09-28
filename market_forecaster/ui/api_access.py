@@ -1,6 +1,8 @@
 """Pro API key management UI."""
 from __future__ import annotations
 
+import os
+
 import streamlit as st
 
 from market_forecaster.core.entitlements import can_use_api
@@ -13,6 +15,10 @@ from market_forecaster.services.api_keys import (
     revoke_user_api_key,
 )
 from market_forecaster.ui.design_system import render_section_header
+
+
+def _api_public_url() -> str:
+    return str(os.getenv("MARKET_FORECASTER_API_PUBLIC_URL") or "").strip().rstrip("/")
 
 
 def _short_timestamp(value: object) -> str:
@@ -130,6 +136,21 @@ def render_api_access_panel() -> None:
 
         st.markdown("---")
         st.markdown("**Using a key**")
+        api_url = _api_public_url()
+        if api_url:
+            st.caption("Dedicated Pro API endpoint")
+            st.code(f"{api_url}/api/v1", language="text")
+            st.link_button(
+                "Open API documentation",
+                f"{api_url}/docs",
+                use_container_width=True,
+            )
+        else:
+            st.info(
+                "The dedicated FastAPI hostname has not been published to this UI deployment yet. "
+                "API keys remain safe to create/revoke, but programmatic requests require the separate API host."
+            )
+
         st.code("X-API-Key: mfk_...", language="text")
         st.caption(
             "Send the key in the X-API-Key header. Each request re-checks the key and current Pro "
