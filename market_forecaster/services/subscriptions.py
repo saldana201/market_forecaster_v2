@@ -328,7 +328,14 @@ def create_checkout_url(
     profile = state.get(AUTH_PROFILE_KEY)
     email = profile.get("email") if isinstance(profile, dict) else None
 
-    existing = load_subscription(state, identity)
+    try:
+        existing = load_subscription(state, identity)
+    except PersistenceError as exc:
+        raise BillingError(
+            "Unable to verify the current subscription. Checkout is blocked to "
+            "prevent a duplicate recurring subscription."
+        ) from exc
+
     existing_status = str((existing or {}).get("status") or "none").lower()
     existing_plan = str((existing or {}).get("plan") or "demo").lower()
     existing_subscription_id = str(
