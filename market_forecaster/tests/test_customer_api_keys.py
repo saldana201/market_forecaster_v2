@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from market_forecaster.api import security
+from market_forecaster.api.middleware import RateLimitMiddleware
 from market_forecaster.core.session_identity import AppIdentity
 from market_forecaster.services import api_keys
 from market_forecaster.services.api_keys import (
@@ -239,3 +240,38 @@ def test_customer_api_key_backend_outage_is_503(monkeypatch):
     )
 
     assert response.status_code == 503
+
+
+
+def test_customer_api_key_rate_limit_follows_key_across_source_ips():
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests=2,
+        window_seconds=60,
+        shared_limiter=None,
+    )
+
+    @app.get("/api/v1/ping")
+    async def ping():
+        return {"ok": True}
+
+    client = TestClient(app)
+    customer_key = "mfk_" + "r" * 40
+
+    first = client.get(
+        "/api/v1/ping",
+        headers={"X-API-Key": customer_key, "X-Forwarded-For": "10.0.0.1"},
+    )
+    second = client.get(
+        "/api/v1/ping",
+        headers={"X-API-Key": customer_key, "X-Forwarded-For": "10.0.0.2"},
+    )
+    third = client.get(
+        "/api/v1/ping",
+        headers={"X-API-Key": customer_key, "X-Forwarded-For": "10.0.0.3"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429
