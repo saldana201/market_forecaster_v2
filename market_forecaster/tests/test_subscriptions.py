@@ -6,6 +6,7 @@ from market_forecaster.billing.stripe_client import StripeBillingClient
 from market_forecaster.core.session_identity import AppIdentity
 import market_forecaster.services.subscriptions as subscriptions
 from market_forecaster.services.subscriptions import (
+    create_checkout_url,
     effective_plan,
     normalize_requested_plan,
     requested_plan_is_satisfied,
@@ -257,3 +258,132 @@ def test_stripe_catalog_validation_is_secret_safe(monkeypatch):
     assert all(row["ready"] for row in rows)
     assert rows[0]["detail"].startswith("USD ")
     assert "do-not-expose" not in str(rows)
+
+
+
+def test_checkout_reuses_existing_stripe_customer_instead_of_email(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "id": "cs_test_existing_customer",
+                    "url": "https://checkout.stripe.com/test",
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        captured["body"] = req.data.decode("utf-8")
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.billing.stripe_client.request.urlopen",
+        fake_urlopen,
+    )
+
+    client = StripeBillingClient("sk_test_example")
+    client.create_checkout_session(
+        user_id="11111111-1111-4111-8111-111111111111",
+        email="user@example.com",
+        customer_id="cus_existing",
+        plan="pro",
+        price_id="price_pro",
+        success_url="https://example.com/?billing=success",
+        cancel_url="https://example.com/?billing=cancel",
+    )
+
+    assert "customer=cus_existing" in captured["body"]
+    assert "customer_email" not in captured["body"]
+
+
+def test_checkout_blocks_second_active_paid_subscription(monkeypatch):
+    identity = _identity("standard", "active")
+    state = {}
+
+    monkeypatch.setattr(
+        subscriptions,
+        "subscription_configuration_status",
+        lambda: (True, "ready"),
+    )
+    monkeypatch.setattr(
+        subscriptions,
+        "verified_owner_id",
+        lambda _identity: "11111111-1111-4111-8111-111111111111",
+    )
+    monkeypatch.setattr(
+        subscriptions,
+        "load_subscription",
+        lambda _state, _identity: {
+            "plan": "standard",
+            "status": "active",
+            "stripe_customer_id": "cus_existing",
+            "stripe_subscription_id": "sub_existing",
+        },
+    )
+
+    class ShouldNotCreateCheckout:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("Stripe client must not be created")
+
+    monkeypatch.setattr(subscriptions, "StripeBillingClient", ShouldNotCreateCheckout)
+
+    try:
+        create_checkout_url(state, identity, "pro")
+    except Exception as exc:
+        assert "billing portal" in str(exc).lower()
+        assert "second recurring subscription" in str(exc).lower()
+    else:
+        raise AssertionError("Expected active subscription checkout to be blocked")
+
+
+def test_checkout_reuses_customer_after_cancellation(monkeypatch):
+    identity = _identity("demo", "canceled")
+    state = {}
+    captured = {}
+
+    monkeypatch.setattr(
+        subscriptions,
+        "subscription_configuration_status",
+        lambda: (True, "ready"),
+    )
+    monkeypatch.setattr(
+        subscriptions,
+        "verified_owner_id",
+        lambda _identity: "11111111-1111-4111-8111-111111111111",
+    )
+    monkeypatch.setattr(
+        subscriptions,
+        "load_subscription",
+        lambda _state, _identity: {
+            "plan": "pro",
+            "status": "canceled",
+            "stripe_customer_id": "cus_existing",
+            "stripe_subscription_id": "sub_old",
+        },
+    )
+    monkeypatch.setattr(subscriptions, "_stripe_secret", lambda: "sk_test_example")
+    monkeypatch.setattr(subscriptions, "_price_id", lambda plan: f"price_{plan}")
+    monkeypatch.setattr(subscriptions, "_public_url", lambda: "https://example.com")
+
+    class FakeStripeClient:
+        def __init__(self, secret):
+            assert secret == "sk_test_example"
+
+        def create_checkout_session(self, **kwargs):
+            captured.update(kwargs)
+            return {"url": "https://checkout.stripe.com/reuse"}
+
+    monkeypatch.setattr(subscriptions, "StripeBillingClient", FakeStripeClient)
+
+    url = create_checkout_url(state, identity, "standard")
+
+    assert url == "https://checkout.stripe.com/reuse"
+    assert captured["customer_id"] == "cus_existing"
+    assert captured["price_id"] == "price_standard"
