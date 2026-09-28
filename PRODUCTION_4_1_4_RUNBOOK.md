@@ -249,7 +249,36 @@ recurring, and have a positive amount/currency.
 
 A non-zero exit means at least one required production dependency is not ready.
 
-## 10. Supabase security advisory review
+## 10. Pro API deployment boundary
+
+The primary `marketforecaster` Azure App Service remains the Streamlit UI and does
+not serve FastAPI routes.
+
+The dedicated Pro API uses a separate existing Azure Web App and the manual-only
+GitHub Actions workflow:
+
+    Deploy Market Forecaster Pro API
+
+The workflow refuses to create Azure resources. It validates the API host settings,
+configures the Python 3.12 + Uvicorn startup command, deploys the repo, and verifies
+both /api/v1/health and /api/v1/ready.
+
+Required API-host settings include:
+
+    MARKET_FORECASTER_ENV=production
+    MARKET_FORECASTER_API_KEY=<internal server key>
+    MARKET_FORECASTER_ALLOWED_ORIGINS=https://marketforecaster.oneeightaisystems.com
+    MARKET_FORECASTER_SUPABASE_URL=<project URL>
+    MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY=<server-only key>
+    SUBSCRIPTIONS_ENABLED=true
+
+After the dedicated API host passes readiness, set on the Streamlit UI App Service:
+
+    MARKET_FORECASTER_API_PUBLIC_URL=https://<api-host>
+
+Do not point this setting at the Streamlit hostname.
+
+## 11. Supabase security advisory review
 
 The private API rate-limit bucket table is intentionally inaccessible to anon and
 authenticated roles, and rate-limit mutations occur only through a service-role-only
@@ -259,7 +288,7 @@ Supabase may still flag any RLS-disabled table as a security advisory. Treat tha
 as an explicit release review item rather than suppressing it. If RLS is enabled,
 verify the trusted RPC still works before deploying the change.
 
-## 11. Production cutover checklist
+## 12. Production cutover checklist
 
 1. CI green.
 2. Supabase migrations applied, including user_api_keys before Pro API launch.

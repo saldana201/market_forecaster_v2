@@ -19,6 +19,12 @@ from market_forecaster.services.api_keys import (
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase" / "migrations" / "20260928100000_user_api_keys.sql"
+DENY_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260928101500_user_api_keys_explicit_deny.sql"
+)
 USER_ID = "11111111-1111-4111-8111-111111111111"
 
 
@@ -276,3 +282,13 @@ def test_customer_api_key_rate_limit_follows_key_across_source_ips():
     assert first.status_code == 200
     assert second.status_code == 200
     assert third.status_code == 429
+
+
+
+def test_customer_api_key_table_has_explicit_browser_deny_policy():
+    sql = DENY_MIGRATION.read_text(encoding="utf-8")
+
+    assert "create policy user_api_keys_deny_browser_roles" in sql
+    assert "to anon, authenticated" in sql
+    assert "using (false)" in sql
+    assert "with check (false)" in sql
