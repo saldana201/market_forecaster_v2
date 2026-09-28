@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib import error, parse, request
 
+from market_forecaster.config import SUBSCRIPTIONS_ENABLED
 from market_forecaster.core.entitlements import can_use_api
 from market_forecaster.core.session_identity import AppIdentity
 from market_forecaster.services.subscriptions import ENTITLED_STATUSES
@@ -206,6 +207,9 @@ def revoke_user_api_key(identity: AppIdentity, key_id: str) -> None:
 
 
 def validate_customer_api_key(api_key: str) -> APIKeyPrincipal:
+    if not SUBSCRIPTIONS_ENABLED:
+        raise InvalidCustomerAPIKey("Customer API access is not enabled.")
+
     api_key = str(api_key or "").strip()
     if not api_key.startswith("mfk_") or len(api_key) < 30:
         raise InvalidCustomerAPIKey("Invalid customer API key.")
