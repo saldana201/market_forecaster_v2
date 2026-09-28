@@ -106,6 +106,7 @@ The workflow also enforces the non-secret 4.1 production feature flags:
 
 If SUBSCRIPTIONS_ENABLED=true, deployment additionally requires:
 
+    MARKET_FORECASTER_BILLING_MODE
     MARKET_FORECASTER_PUBLIC_URL
     STRIPE_SECRET_KEY
     STRIPE_STANDARD_PRICE_ID
@@ -197,6 +198,10 @@ production API key is used as the server-side secret.
 If the shared backend is temporarily unavailable, RateLimitMiddleware falls back
 to its existing per-process limiter so the API remains available.
 
+Pro customer API keys add a second limiter bucket keyed from a one-way fingerprint
+of each customer key. The source-IP bucket remains in place as well. See
+PRO_API_ACCESS.md for the API-key lifecycle and deployment boundary.
+
 For larger public API scale, Azure API Management or Front Door/WAF can still be
 placed in front as an additional abuse-protection layer.
 
@@ -257,19 +262,20 @@ verify the trusted RPC still works before deploying the change.
 ## 11. Production cutover checklist
 
 1. CI green.
-2. Supabase migrations applied.
+2. Supabase migrations applied, including user_api_keys before Pro API launch.
 3. Azure deployment configuration preflight passes without exposing secret values.
 4. GitHub OIDC publisher workflow succeeds from master.
-4. Run the shared refresh workflow manually once.
-5. Confirm all 14 Demo contracts exist in public.shared_forecast_contracts.
-6. Set SHARED_CONTRACT_STORAGE_ENABLED=true in Azure.
-7. Restart App Service.
-8. Verify all 14 Demo markets show live.
-9. Verify a shared-store read outage still falls back to local contracts.
-10. Verify two authenticated users remain isolated by RLS.
-11. Sign in, open Account, hard-refresh the browser, and confirm the user remains signed in on Account.
-12. Sign out and confirm a hard refresh returns to Demo.
-13. Verify Stripe remains disabled until its separate test-mode acceptance is complete.
-14. Run production_readiness --strict.
-15. For paid launch, run production_readiness --strict --require-billing.
-16. Verify Azure deployment and custom domain.
+5. Run the shared refresh workflow manually once.
+6. Confirm all 14 Demo contracts exist in public.shared_forecast_contracts.
+7. Set SHARED_CONTRACT_STORAGE_ENABLED=true in Azure.
+8. Restart App Service.
+9. Verify all 14 Demo markets show live.
+10. Verify a shared-store read outage still falls back to local contracts.
+11. Verify two authenticated users remain isolated by RLS.
+12. Sign in, open Account, hard-refresh the browser, and confirm the user remains signed in on Account.
+13. Sign out and confirm a hard refresh returns to Demo.
+14. Verify Stripe remains disabled until its separate test-mode acceptance is complete.
+15. Run production_readiness --strict.
+16. For paid launch, run production_readiness --strict --require-billing.
+17. Before advertising Pro API access, deploy the FastAPI host separately and verify a customer mfk_ key.
+18. Verify Azure deployment and custom domain.
