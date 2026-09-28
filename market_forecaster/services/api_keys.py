@@ -61,6 +61,21 @@ def _hash_api_key(api_key: str) -> str:
     return hashlib.sha256(str(api_key or "").encode("utf-8")).hexdigest()
 
 
+def api_key_store_status() -> tuple[bool, str]:
+    ready, reason = api_key_store_configuration_status()
+    if not ready:
+        return False, reason
+    try:
+        _request_rows(
+            "user_api_keys",
+            query={"select": "id", "limit": "1"},
+            timeout_seconds=2.0,
+        )
+    except APIKeyStoreError as exc:
+        return False, str(exc)
+    return True, "ready"
+
+
 def _request_rows(
     table: str,
     *,
