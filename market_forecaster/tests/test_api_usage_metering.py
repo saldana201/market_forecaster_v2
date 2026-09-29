@@ -119,3 +119,21 @@ def test_api_settings_allow_quota_to_change_without_code(monkeypatch):
     settings = load_settings()
 
     assert settings.pro_api_monthly_requests == 2500
+
+
+
+def test_production_api_settings_reject_non_positive_monthly_quota(monkeypatch):
+    monkeypatch.setenv("MARKET_FORECASTER_ENV", "production")
+    monkeypatch.setenv("MARKET_FORECASTER_API_KEY", "internal-secret")
+    monkeypatch.setenv(
+        "MARKET_FORECASTER_ALLOWED_ORIGINS",
+        "https://marketforecaster.oneeightaisystems.com",
+    )
+    monkeypatch.setenv("MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS", "0")
+
+    try:
+        load_settings()
+    except RuntimeError as exc:
+        assert "MONTHLY_REQUESTS" in str(exc)
+    else:
+        raise AssertionError("Expected production settings to reject zero API quota")
