@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from market_forecaster.api import security
-from market_forecaster.api.middleware import RateLimitMiddleware
+from market_forecaster.api.middleware import RateLimitMiddleware, RequestContextMiddleware
 from market_forecaster.core.session_identity import AppIdentity
 from market_forecaster.services import api_keys
 from market_forecaster.services.api_keys import (
@@ -177,6 +177,7 @@ class _Settings:
 
 def _security_client() -> TestClient:
     app = FastAPI()
+    app.add_middleware(RequestContextMiddleware)
 
     @app.get("/protected", dependencies=[Depends(security.require_api_key)])
     async def protected():
