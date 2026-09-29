@@ -86,6 +86,21 @@ def api_key_store_status() -> tuple[bool, str]:
     return True, "ready"
 
 
+def api_usage_metering_status() -> tuple[bool, str]:
+    ready, reason = api_key_store_configuration_status()
+    if not ready:
+        return False, reason
+    try:
+        _request_rows(
+            "api_usage_monthly",
+            query={"select": "user_id", "limit": "1"},
+            timeout_seconds=2.0,
+        )
+    except APIKeyStoreError as exc:
+        return False, str(exc)
+    return True, "ready"
+
+
 def _rpc_rows(
     function_name: str,
     *,
