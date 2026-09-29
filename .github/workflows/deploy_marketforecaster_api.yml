@@ -94,6 +94,7 @@ jobs:
           require_setting MARKET_FORECASTER_ALLOWED_ORIGINS
           require_setting MARKET_FORECASTER_SUPABASE_URL
           require_setting MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY
+          require_setting MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS
           require_setting SUBSCRIPTIONS_ENABLED
 
           environment="$(az webapp config appsettings list \
@@ -106,6 +107,11 @@ jobs:
             --name "$APP_NAME" \
             --query "[?name=='SUBSCRIPTIONS_ENABLED'].value | [0]" \
             -o tsv | tr '[:upper:]' '[:lower:]')"
+          monthly_limit="$(az webapp config appsettings list \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$APP_NAME" \
+            --query "[?name=='MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS'].value | [0]" \
+            -o tsv)"
 
           if [ "$environment" != 'production' ]; then
             echo "::error::MARKET_FORECASTER_ENV must be production on the public API host."
@@ -115,7 +121,12 @@ jobs:
             echo "::error::SUBSCRIPTIONS_ENABLED must be true before customer Pro API keys can authorize requests."
             exit 1
           fi
+          if ! [[ "$monthly_limit" =~ ^[0-9]+$ ]] || [ "$monthly_limit" -le 0 ]; then
+            echo "::error::MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS must be a positive integer."
+            exit 1
+          fi
 
+          echo "Configured monthly Pro API quota: $monthly_limit requests"
           echo 'API production configuration preflight passed.'
 
       - name: Package API application
