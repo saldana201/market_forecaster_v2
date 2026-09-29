@@ -33,6 +33,23 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status_code = response.status_code
             response.headers["x-request-id"] = request_id
+
+            usage = getattr(request.state, "api_usage", None)
+            if usage is not None:
+                response.headers["X-Market-Forecaster-API-Limit"] = str(
+                    usage.monthly_limit
+                )
+                response.headers["X-Market-Forecaster-API-Used"] = str(
+                    usage.used
+                )
+                response.headers["X-Market-Forecaster-API-Remaining"] = str(
+                    usage.remaining
+                )
+                if usage.period_end:
+                    response.headers["X-Market-Forecaster-API-Reset"] = str(
+                        usage.period_end
+                    )
+
             return response
         finally:
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -50,6 +67,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                             principal.get("type")
                             if isinstance(principal, dict)
                             else None
+                        ),
+                        "api_usage_used": (
+                            getattr(getattr(request.state, "api_usage", None), "used", None)
+                        ),
+                        "api_usage_limit": (
+                            getattr(
+                                getattr(request.state, "api_usage", None),
+                                "monthly_limit",
+                                None,
+                            )
                         ),
                     },
                     separators=(",", ":"),
