@@ -53,7 +53,8 @@ def test_api_deploy_verifies_health_readiness_and_customer_key_config():
     assert "/api/v1/health" in text
     assert "/api/v1/ready" in text
     assert "pro_customer_api_keys" in text
-    assert "customer-key authorization is configured" in text
+    assert "pro_api_usage_metering" in text
+    assert "usage metering are configured" in text
 
 
 
