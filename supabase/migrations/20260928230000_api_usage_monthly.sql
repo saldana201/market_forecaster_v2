@@ -1,12 +1,11 @@
--- Monthly usage metering for Pro customer API keys.
+-- Account-wide monthly usage metering for Pro customer API access.
 
 create table if not exists public.api_usage_monthly (
   user_id uuid not null references auth.users(id) on delete cascade,
-  api_key_id uuid not null references public.user_api_keys(id) on delete cascade,
   period_start date not null,
   request_count bigint not null default 0,
   updated_at timestamptz not null default timezone('utc', now()),
-  primary key (user_id, api_key_id, period_start),
+  primary key (user_id, period_start),
   constraint api_usage_monthly_request_count_check
     check (request_count >= 0)
 );
@@ -33,7 +32,6 @@ create index if not exists api_usage_monthly_user_period_idx
 
 create or replace function public.consume_market_forecaster_api_request(
   p_user_id uuid,
-  p_api_key_id uuid,
   p_monthly_limit bigint
 )
 returns table (
@@ -55,8 +53,8 @@ declare
   v_used bigint;
   v_allowed boolean := false;
 begin
-  if p_user_id is null or p_api_key_id is null then
-    raise exception 'user_id and api_key_id are required';
+  if p_user_id is null then
+    raise exception 'user_id is required';
   end if;
 
   if p_monthly_limit <= 0 then
@@ -65,17 +63,15 @@ begin
 
   insert into public.api_usage_monthly (
     user_id,
-    api_key_id,
     period_start,
     request_count
   )
   values (
     p_user_id,
-    p_api_key_id,
     v_period_start,
     0
   )
-  on conflict (user_id, api_key_id, period_start) do nothing;
+  on conflict (user_id, period_start) do nothing;
 
   update public.api_usage_monthly
   set
@@ -83,7 +79,6 @@ begin
     updated_at = timezone('utc', now())
   where
     user_id = p_user_id
-    and api_key_id = p_api_key_id
     and period_start = v_period_start
     and request_count < p_monthly_limit
   returning request_count into v_used;
@@ -96,7 +91,6 @@ begin
     from public.api_usage_monthly
     where
       user_id = p_user_id
-      and api_key_id = p_api_key_id
       and period_start = v_period_start;
 
     v_used := coalesce(v_used, p_monthly_limit);
@@ -113,9 +107,9 @@ end;
 $$;
 
 revoke all on function public.consume_market_forecaster_api_request(
-  uuid, uuid, bigint
+  uuid, bigint
 ) from public, anon, authenticated;
 
 grant execute on function public.consume_market_forecaster_api_request(
-  uuid, uuid, bigint
+  uuid, bigint
 ) to service_role;
