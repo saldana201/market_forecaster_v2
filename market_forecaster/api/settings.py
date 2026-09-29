@@ -72,9 +72,9 @@ def load_settings() -> APISettings:
             "MARKET_FORECASTER_SHARED_RATE_LIMIT_ENABLED",
             False,
         ),
-        pro_api_monthly_requests=max(
-            1,
-            _int("MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS", 1000),
+        pro_api_monthly_requests=_int(
+            "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS",
+            1000,
         ),
     )
     settings.validate()
