@@ -179,7 +179,15 @@ jobs:
           customer = ready.get('pro_customer_api_keys') or {}
           if not customer.get('configured'):
               raise SystemExit('Pro customer API key authorization is not configured')
-          print('Market Forecaster Pro API is healthy and customer-key authorization is configured.')
+          metering = ready.get('pro_api_usage_metering') or {}
+          if not metering.get('configured'):
+              raise SystemExit('Pro API usage metering is not configured')
+          if int(metering.get('monthly_request_limit') or 0) <= 0:
+              raise SystemExit('Pro API monthly quota is not configured')
+          print(
+              'Market Forecaster Pro API is healthy; customer-key authorization '
+              'and usage metering are configured.'
+          )
           PY
 
       - name: Upload API diagnostics on failure
