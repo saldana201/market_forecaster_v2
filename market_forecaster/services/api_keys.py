@@ -33,6 +33,16 @@ class APIKeyPrincipal:
     subscription_status: str
 
 
+@dataclass(frozen=True)
+class APIUsageDecision:
+    allowed: bool
+    used: int
+    remaining: int
+    monthly_limit: int
+    period_start: str
+    period_end: str
+
+
 def _supabase_url() -> str:
     return str(
         os.getenv("MARKET_FORECASTER_SUPABASE_URL")
@@ -74,6 +84,60 @@ def api_key_store_status() -> tuple[bool, str]:
     except APIKeyStoreError as exc:
         return False, str(exc)
     return True, "ready"
+
+
+def _rpc_rows(
+    function_name: str,
+    *,
+    payload: dict,
+    timeout_seconds: float = 5.0,
+) -> list[dict]:
+    ready, reason = api_key_store_configuration_status()
+    if not ready:
+        raise APIKeyStoreError(reason)
+
+    key = _service_role_key()
+    endpoint = f"{_supabase_url()}/rest/v1/rpc/{function_name}"
+    req = request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=timeout_seconds) as response:
+            raw = response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise APIKeyStoreError(
+            f"Customer API usage request failed ({exc.code}): {body}"
+        ) from exc
+    except error.URLError as exc:
+        raise APIKeyStoreError(
+            f"Customer API usage service unavailable: {exc.reason}"
+        ) from exc
+
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+    except Exception as exc:
+        raise APIKeyStoreError(
+            "Customer API usage service returned invalid JSON."
+        ) from exc
+
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        return [parsed]
+    return []
 
 
 def _request_rows(
@@ -219,6 +283,63 @@ def revoke_user_api_key(identity: AppIdentity, key_id: str) -> None:
         payload={"revoked_at": datetime.now(timezone.utc).isoformat()},
         prefer="return=minimal",
     )
+
+
+def consume_customer_api_request(
+    principal: APIKeyPrincipal,
+    *,
+    monthly_limit: int,
+) -> APIUsageDecision:
+    limit = max(1, int(monthly_limit))
+    rows = _rpc_rows(
+        "consume_market_forecaster_api_request",
+        payload={
+            "p_user_id": principal.user_id,
+            "p_monthly_limit": limit,
+        },
+        timeout_seconds=4.0,
+    )
+    if not rows:
+        raise APIKeyStoreError("Customer API usage quota could not be evaluated.")
+
+    row = rows[0]
+    return APIUsageDecision(
+        allowed=bool(row.get("allowed")),
+        used=int(row.get("used") or 0),
+        remaining=int(row.get("remaining") or 0),
+        monthly_limit=limit,
+        period_start=str(row.get("period_start") or ""),
+        period_end=str(row.get("period_end") or ""),
+    )
+
+
+def get_user_api_usage(
+    identity: AppIdentity,
+    *,
+    monthly_limit: int = 1000,
+) -> dict:
+    user_id = verified_owner_id(identity)
+    now = datetime.now(timezone.utc)
+    period_start = now.date().replace(day=1).isoformat()
+    rows = _request_rows(
+        "api_usage_monthly",
+        query={
+            "select": "request_count,period_start,updated_at",
+            "user_id": f"eq.{user_id}",
+            "period_start": f"eq.{period_start}",
+            "limit": "1",
+        },
+    )
+    row = rows[0] if rows else {}
+    used = int(row.get("request_count") or 0)
+    limit = max(1, int(monthly_limit))
+    return {
+        "used": used,
+        "remaining": max(limit - used, 0),
+        "monthly_limit": limit,
+        "period_start": period_start,
+        "updated_at": row.get("updated_at"),
+    }
 
 
 def validate_customer_api_key(api_key: str) -> APIKeyPrincipal:
