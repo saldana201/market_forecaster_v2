@@ -270,11 +270,16 @@ Required API-host settings include:
     MARKET_FORECASTER_ALLOWED_ORIGINS=https://marketforecaster.oneeightaisystems.com
     MARKET_FORECASTER_SUPABASE_URL=<project URL>
     MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY=<server-only key>
+    MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
     SUBSCRIPTIONS_ENABLED=true
 
 After the dedicated API host passes readiness, set on the Streamlit UI App Service:
 
     MARKET_FORECASTER_API_PUBLIC_URL=https://<api-host>
+    MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
+
+Keep the monthly quota value aligned between the UI and API hosts so the Account
+usage meter matches the enforced API allowance.
 
 Do not point this setting at the Streamlit hostname.
 
@@ -306,5 +311,8 @@ verify the trusted RPC still works before deploying the change.
 14. Verify Stripe remains disabled until its separate test-mode acceptance is complete.
 15. Run production_readiness --strict.
 16. For paid launch, run production_readiness --strict --require-billing.
-17. Before advertising Pro API access, deploy the FastAPI host separately and verify a customer mfk_ key.
-18. Verify Azure deployment and custom domain.
+17. Apply the api_usage_monthly migration and verify the service-role-only usage RPC.
+18. Before advertising Pro API access, deploy the FastAPI host separately and verify a customer mfk_ key.
+19. Confirm one protected API request increments monthly usage and returns quota headers.
+20. Verify the Account API Access panel shows the same monthly usage.
+21. Verify Azure deployment and custom domain.
