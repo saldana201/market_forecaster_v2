@@ -98,8 +98,13 @@ Primary commercial surface:
 - opportunity ranking
 - selected research outputs
 
-Internal/operational endpoints can remain authenticated without being advertised
-as long-term public contracts.
+Internal/operational endpoints remain authenticated with the trusted internal
+server key and are excluded from the public OpenAPI schema. Customer `mfk_` keys
+cannot use governance/deployment operations merely because they have a Pro
+subscription.
+
+This separation lets the commercial API evolve as a stable product while internal
+model-operations routes can change without creating public compatibility promises.
 
 ## Versioning
 
@@ -137,7 +142,7 @@ This prevents unbilled access during a billing or persistence outage.
 
 ## Launch sequence
 
-1. Merge and apply API usage-metering migration.
+1. Merge and apply API usage-metering migration. **Complete for the current Supabase project.**
 2. Deploy the dedicated FastAPI Azure App Service.
 3. Configure the initial Pro monthly allowance explicitly.
 4. Verify API key creation and a protected forecast request.

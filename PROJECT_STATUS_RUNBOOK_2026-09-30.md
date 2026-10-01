@@ -1,6 +1,6 @@
 # Market Forecaster — Project Status Runbook
 
-Status date: 2026-09-30 (America/Chicago)
+Status date: 2026-10-01 (America/Chicago)
 
 This document is the current launch-status checklist for Market Forecaster. It separates completed work from remaining release work and post-launch expansion.
 
@@ -15,7 +15,6 @@ Current state:
   - Standard: USD 19.99/month
   - Pro: USD 39.99/month
 - The remaining launch work is concentrated in:
-  - applying the API usage-metering migration
   - provisioning/deploying the dedicated FastAPI Azure App Service
   - end-to-end API quota/revocation testing
   - resolving the automated Stripe price-catalog validation exception before live billing
@@ -146,13 +145,18 @@ Merged in PR #47:
 - [x] Account -> API Access usage meter implemented.
 - [x] API monetization roadmap documented.
 
-Still required:
-- [ ] Apply `20260928230000_api_usage_monthly.sql` to Supabase.
-- [ ] Verify `public.api_usage_monthly` exists and browser roles cannot access it.
-- [ ] Verify service-role-only `consume_market_forecaster_api_request` RPC.
-- [ ] Verify production readiness sees API usage metering as configured.
+Completed activation:
+- [x] Applied `20260928230000_api_usage_monthly.sql` to Supabase.
+- [x] Verified `public.api_usage_monthly` exists with RLS enabled.
+- [x] Verified browser roles have no table grants.
+- [x] Verified `consume_market_forecaster_api_request` is executable by
+  `service_role` and not by `anon` or `authenticated`.
 
-Status: CODE COMPLETE; DATABASE ACTIVATION PENDING.
+Still required:
+- [ ] Verify the dedicated API host reports API usage metering as configured in
+  `/api/v1/ready` after deployment.
+
+Status: CODE + DATABASE ACTIVATION COMPLETE; HOST VALIDATION PENDING.
 
 ## 7. Dedicated FastAPI deployment
 
@@ -162,6 +166,10 @@ Implemented in repository:
 - [x] /api/v1/health.
 - [x] /api/v1/ready.
 - [x] FastAPI customer-key authorization.
+- [x] Customer/internal API authorization boundaries implemented.
+- [x] Internal governance/operations routes reserved for trusted server key.
+- [x] Internal-only routes hidden from public OpenAPI schema.
+- [x] Customer `GET /api/v1/api/usage` endpoint implemented.
 - [x] Uvicorn Azure startup command.
 - [x] Manual GitHub workflow: Deploy Market Forecaster Pro API.
 - [x] Workflow validates required server settings.
@@ -300,14 +308,14 @@ Status: SOURCE CODE CURRENT; latest production deployment confirmation still req
 
 The project should not be called production-complete until every item below is checked:
 
-- [ ] API usage-metering migration applied.
+- [x] API usage-metering migration applied.
 - [ ] Dedicated Azure FastAPI host provisioned.
 - [ ] Dedicated API deployment passes /health and /ready.
 - [ ] Customer API usage count tested end-to-end.
 - [ ] API key revocation tested against live API host.
 - [ ] Quota exhaustion tested.
 - [ ] Automated Stripe Standard/Pro recurring-price catalog validator passes.
-- [ ] Supabase leaked-password protection addressed.
+- [ ] Supabase leaked-password protection addressed. Current security advisor shows this as the only warning.
 - [ ] Backup/PITR plan confirmed.
 - [ ] Restore drill completed.
 - [ ] Core Azure operational alerts configured.
@@ -338,6 +346,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Apply and validate the API usage-metering Supabase migration.
-2. Provision and deploy the dedicated Azure FastAPI host.
-3. Run the full Pro API acceptance suite, then close the Stripe catalog validation issue before live billing cutover.
+1. Provision and deploy the dedicated Azure FastAPI host.
+2. Run the full Pro API acceptance suite, including the customer usage endpoint and internal-route access boundary.
+3. Close the Stripe catalog validation issue and remaining production-hardening items before live billing cutover.

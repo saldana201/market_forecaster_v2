@@ -36,7 +36,12 @@ from market_forecaster.api.routes import uncertainty as uncertainty_routes
 from market_forecaster.api.routes import forecast_intelligence as forecast_intelligence_routes
 from market_forecaster.api.routes import public_demo as public_demo_routes
 from market_forecaster.api.routes import account as account_routes
-from market_forecaster.api.security import require_api_key
+from market_forecaster.api.routes import customer_api as customer_api_routes
+from market_forecaster.api.security import (
+    require_api_key,
+    require_customer_api_key,
+    require_internal_api_key,
+)
 from market_forecaster.api.settings import load_settings
 from market_forecaster.api.shared_rate_limit import SharedRateLimiter
 from market_forecaster.config import (
@@ -64,7 +69,12 @@ settings = load_settings()
 
 app = FastAPI(
     title="Market Forecaster API",
-    description=f"Multi-model market forecasting API.\n\n{DISCLAIMER}",
+    description=(
+        "Customer-facing Market Forecaster API for forecasts, signals, portfolio "
+        "analysis, opportunity ranking, uncertainty, and research outputs. "
+        "Operational and governance routes are reserved for trusted internal integrations.\n\n"
+        f"{DISCLAIMER}"
+    ),
     version=__version__,
 )
 
@@ -90,10 +100,18 @@ app.add_middleware(
 app.add_middleware(RequestContextMiddleware)
 
 protected = [Depends(require_api_key)]
+customer_only = [Depends(require_customer_api_key)]
+internal_only = [Depends(require_internal_api_key)]
 if PUBLIC_DEMO_API_ENABLED:
     app.include_router(public_demo_routes.router, prefix="/api/v1", tags=["Public Demo"])
 if MULTI_USER_ENABLED:
     app.include_router(account_routes.router, prefix="/api/v1", tags=["Account"])
+app.include_router(
+    customer_api_routes.router,
+    prefix="/api/v1",
+    tags=["API Account"],
+    dependencies=customer_only,
+)
 app.include_router(forecast_routes.router, prefix="/api/v1", tags=["Forecast"], dependencies=protected)
 app.include_router(signal_routes.router, prefix="/api/v1", tags=["Signals"], dependencies=protected)
 app.include_router(pattern_routes.router, prefix="/api/v1", tags=["Patterns"], dependencies=protected)
@@ -104,11 +122,41 @@ app.include_router(xgb_routes.router, prefix="/api/v1", tags=["XGBoost"], depend
 app.include_router(consensus_routes.router, prefix="/api/v1", tags=["Consensus"], dependencies=protected)
 app.include_router(options_routes.router, prefix="/api/v1", tags=["Options Flow"], dependencies=protected)
 app.include_router(options_history_routes.router, prefix="/api/v1", tags=["Options History"], dependencies=protected)
-app.include_router(options_promotion_routes.router, prefix="/api/v1", tags=["Options Promotion"], dependencies=protected)
-app.include_router(audit_routes.router, prefix="/api/v1", tags=["Forecast Audit"], dependencies=protected)
-app.include_router(deployment_policy_routes.router, prefix="/api/v1", tags=["Deployment Policy"], dependencies=protected)
-app.include_router(operations_routes.router, prefix="/api/v1", tags=["Operations"], dependencies=protected)
-app.include_router(data_provider_routes.router, prefix="/api/v1", tags=["Data Providers"], dependencies=protected)
+app.include_router(
+    options_promotion_routes.router,
+    prefix="/api/v1",
+    tags=["Options Promotion"],
+    dependencies=internal_only,
+    include_in_schema=False,
+)
+app.include_router(
+    audit_routes.router,
+    prefix="/api/v1",
+    tags=["Forecast Audit"],
+    dependencies=internal_only,
+    include_in_schema=False,
+)
+app.include_router(
+    deployment_policy_routes.router,
+    prefix="/api/v1",
+    tags=["Deployment Policy"],
+    dependencies=internal_only,
+    include_in_schema=False,
+)
+app.include_router(
+    operations_routes.router,
+    prefix="/api/v1",
+    tags=["Operations"],
+    dependencies=internal_only,
+    include_in_schema=False,
+)
+app.include_router(
+    data_provider_routes.router,
+    prefix="/api/v1",
+    tags=["Data Providers"],
+    dependencies=internal_only,
+    include_in_schema=False,
+)
 app.include_router(decision_routes.router, prefix="/api/v1", tags=["Decision Layer"], dependencies=protected)
 app.include_router(opportunity_ranking_routes.router, prefix="/api/v1", tags=["Opportunity Ranking"], dependencies=protected)
 app.include_router(portfolio_routes.router, prefix="/api/v1", tags=["Portfolio"], dependencies=protected)
@@ -213,4 +261,5 @@ async def root():
         "docs": "/docs",
         "health": "/api/v1/health",
         "readiness": "/api/v1/ready",
+        "customer_usage": "/api/v1/api/usage",
     }

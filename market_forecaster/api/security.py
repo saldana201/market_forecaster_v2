@@ -100,3 +100,53 @@ async def require_api_key(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or missing API key",
     )
+
+
+
+async def require_internal_api_key(
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> None:
+    """Allow only the trusted server/internal API key.
+
+    Customer Pro keys intentionally cannot call operational/governance routes.
+    """
+    settings = load_settings()
+    presented = str(api_key or "").strip()
+
+    if (
+        presented
+        and settings.api_key
+        and hmac.compare_digest(presented, settings.api_key)
+    ):
+        request.state.api_principal = {
+            "type": "internal",
+            "plan": "internal",
+        }
+        return
+
+    if not settings.auth_enabled:
+        request.state.api_principal = {
+            "type": "development",
+            "plan": "development",
+        }
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Internal API authorization required",
+    )
+
+
+async def require_customer_api_key(
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> None:
+    """Require an entitled Pro customer API key rather than the internal key."""
+    await require_api_key(request, api_key)
+    principal = getattr(request.state, "api_principal", None)
+    if not isinstance(principal, dict) or principal.get("type") != "customer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Pro customer API key required",
+        )
