@@ -69,6 +69,18 @@ Example:
 
 /api/v1/health and /api/v1/ready remain operational endpoints and do not require API authentication. Protected forecasting/research routes use the customer key.
 
+Customer API keys are intentionally separated from trusted operational access.
+The public OpenAPI schema exposes the commercial API surface, while governance,
+deployment-policy, operations, provider-diagnostics, forecast-audit, and options-
+promotion routes require the internal server key and are hidden from customer docs.
+
+Customer applications can inspect the account-wide allowance with:
+
+    GET /api/v1/api/usage
+
+That request is itself counted and returns the current key prefix, Pro entitlement
+state, monthly limit, used requests, remaining requests, and reset period.
+
 ## Usage metering and included quota
 
 Pro customer API access is now metered account-wide across all active API keys.
@@ -83,6 +95,11 @@ redeploying application code as the commercial API offering evolves.
 Each authorized customer request atomically consumes one monthly request from
 `public.api_usage_monthly`. The counter is service-role-only and resets on the
 first day of each UTC month.
+
+The `api_usage_monthly` migration has been applied to the current Supabase
+project and verified with RLS enabled. Browser roles have no table grants, and
+the usage-consumption RPC is executable by `service_role` but not by
+`anon` or `authenticated`.
 
 If the monthly quota is exhausted, customer requests fail with HTTP 429 rather
 than being served without being metered.
