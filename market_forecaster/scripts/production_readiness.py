@@ -17,7 +17,10 @@ from market_forecaster.config import (
     SUBSCRIPTIONS_ENABLED,
     __version__,
 )
-from market_forecaster.services.api_keys import api_key_store_status
+from market_forecaster.services.api_keys import (
+    api_key_store_status,
+    api_usage_metering_status,
+)
 from market_forecaster.services.forecast_access import demo_cache_status
 from market_forecaster.services.shared_authority_store import (
     shared_authority_read_configuration_status,
@@ -182,6 +185,20 @@ def evaluate_readiness(*, require_billing: bool = False) -> dict:
             pro_api_ready,
             billing_required,
             "ready" if pro_api_ready else pro_api_reason,
+        )
+    )
+
+    try:
+        metering_ready, metering_reason = api_usage_metering_status()
+    except Exception as exc:
+        metering_ready = False
+        metering_reason = f"Pro API usage metering check failed: {type(exc).__name__}"
+    checks.append(
+        _check(
+            "pro_api_usage_metering",
+            metering_ready,
+            billing_required,
+            "ready" if metering_ready else metering_reason,
         )
     )
 

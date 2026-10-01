@@ -12,6 +12,7 @@ from market_forecaster.api.settings import load_settings
 from market_forecaster.services.api_keys import (
     APIKeyStoreError,
     InvalidCustomerAPIKey,
+    consume_customer_api_request,
     validate_customer_api_key,
 )
 
@@ -56,6 +57,26 @@ async def require_api_key(
                 detail="Customer API key authorization is temporarily unavailable",
             ) from exc
 
+        try:
+            usage = await asyncio.to_thread(
+                consume_customer_api_request,
+                principal,
+                monthly_limit=settings.pro_api_monthly_requests,
+            )
+        except APIKeyStoreError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Customer API usage metering is temporarily unavailable",
+            ) from exc
+
+        if not usage.allowed:
+            request.state.api_usage = usage
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Monthly Pro API request quota exceeded",
+            )
+
+        request.state.api_usage = usage
         request.state.api_principal = {
             "type": "customer",
             "user_id": principal.user_id,

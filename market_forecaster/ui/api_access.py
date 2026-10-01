@@ -11,6 +11,7 @@ from market_forecaster.services.api_keys import (
     APIKeyStoreError,
     api_key_store_configuration_status,
     create_user_api_key,
+    get_user_api_usage,
     list_user_api_keys,
     revoke_user_api_key,
 )
@@ -19,6 +20,16 @@ from market_forecaster.ui.design_system import render_section_header
 
 def _api_public_url() -> str:
     return str(os.getenv("MARKET_FORECASTER_API_PUBLIC_URL") or "").strip().rstrip("/")
+
+
+def _pro_api_monthly_limit() -> int:
+    try:
+        return max(
+            1,
+            int(os.getenv("MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS", "1000")),
+        )
+    except (TypeError, ValueError):
+        return 1000
 
 
 def _short_timestamp(value: object) -> str:
@@ -81,6 +92,37 @@ def render_api_access_panel() -> None:
             f"{active_count} active API key{'s' if active_count != 1 else ''} · "
             "maximum 5 active keys per account"
         )
+
+        try:
+            usage = get_user_api_usage(
+                identity,
+                monthly_limit=_pro_api_monthly_limit(),
+            )
+        except APIKeyStoreError:
+            usage = None
+
+        if isinstance(usage, dict):
+            used = int(usage.get("used") or 0)
+            monthly_limit = int(usage.get("monthly_limit") or 0)
+            remaining = int(usage.get("remaining") or 0)
+            used_pct = (
+                min(1.0, used / monthly_limit)
+                if monthly_limit > 0
+                else 0.0
+            )
+            usage_col, remaining_col = st.columns(2)
+            with usage_col:
+                st.metric(
+                    "API requests this month",
+                    f"{used:,} / {monthly_limit:,}",
+                )
+            with remaining_col:
+                st.metric("Requests remaining", f"{remaining:,}")
+            st.progress(used_pct)
+            st.caption(
+                "Included Pro API usage resets monthly. This quota is separate from "
+                "the shorter per-minute abuse-protection rate limit."
+            )
 
         with st.form("create_customer_api_key_form", clear_on_submit=True):
             name = st.text_input(

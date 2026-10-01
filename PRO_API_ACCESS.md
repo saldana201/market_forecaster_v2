@@ -69,13 +69,47 @@ Example:
 
 /api/v1/health and /api/v1/ready remain operational endpoints and do not require API authentication. Protected forecasting/research routes use the customer key.
 
+## Usage metering and included quota
+
+Pro customer API access is now metered account-wide across all active API keys.
+
+The initial launch quota is controlled by:
+
+    MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
+
+The value is configuration, not hard-coded pricing logic. It can be changed without
+redeploying application code as the commercial API offering evolves.
+
+Each authorized customer request atomically consumes one monthly request from
+`public.api_usage_monthly`. The counter is service-role-only and resets on the
+first day of each UTC month.
+
+If the monthly quota is exhausted, customer requests fail with HTTP 429 rather
+than being served without being metered.
+
+Successful and quota-rejected customer responses expose:
+
+    X-Market-Forecaster-API-Limit
+    X-Market-Forecaster-API-Used
+    X-Market-Forecaster-API-Remaining
+    X-Market-Forecaster-API-Reset
+
+Account -> API Access also shows current-month usage, remaining requests, and a
+progress indicator.
+
 ## Rate limiting
+
+The monthly quota is separate from short-window abuse protection.
 
 All API traffic keeps the existing source-IP rate limit.
 
-Requests presenting an mfk_ customer key additionally consume an independent rate-limit bucket derived from a SHA-256 fingerprint of that key. Raw API keys are never stored in limiter state.
+Requests presenting an mfk_ customer key additionally consume an independent
+rate-limit bucket derived from a SHA-256 fingerprint of that key. Raw API keys
+are never stored in limiter state.
 
-When shared Supabase rate limiting is enabled, both buckets are shared across API instances. If the shared limiter is unavailable, the existing in-process fallback remains active.
+When shared Supabase rate limiting is enabled, both buckets are shared across API
+instances. If the shared limiter is unavailable, the existing in-process fallback
+remains active.
 
 ## Deployment note
 
@@ -108,6 +142,7 @@ Minimum API-host settings include:
     MARKET_FORECASTER_ALLOWED_ORIGINS=https://marketforecaster.oneeightaisystems.com
     MARKET_FORECASTER_SUPABASE_URL=<project URL>
     MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY=<server-only key>
+    MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
     SUBSCRIPTIONS_ENABLED=true
 
 Never expose the Supabase service-role key or internal API key to browser code.
@@ -122,4 +157,5 @@ The Account -> API Access panel will then show the API base URL and a link to th
 
 The production readiness gate now includes pro_api_key_store.
 
-When billing is required or enabled, a missing/inaccessible API key table is a release-blocking failure.
+When billing is required or enabled, a missing/inaccessible API key table or API
+usage-metering table is a release-blocking failure.

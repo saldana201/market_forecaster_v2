@@ -5,12 +5,13 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from market_forecaster.api import security
-from market_forecaster.api.middleware import RateLimitMiddleware
+from market_forecaster.api.middleware import RateLimitMiddleware, RequestContextMiddleware
 from market_forecaster.core.session_identity import AppIdentity
 from market_forecaster.services import api_keys
 from market_forecaster.services.api_keys import (
     APIKeyPrincipal,
     APIKeyStoreError,
+    APIUsageDecision,
     InvalidCustomerAPIKey,
     create_user_api_key,
     validate_customer_api_key,
@@ -165,8 +166,9 @@ def test_customer_api_key_migration_is_service_role_only():
 
 
 class _Settings:
-    def __init__(self, api_key="internal-secret"):
+    def __init__(self, api_key="internal-secret", pro_api_monthly_requests=1000):
         self.api_key = api_key
+        self.pro_api_monthly_requests = pro_api_monthly_requests
 
     @property
     def auth_enabled(self):
@@ -175,6 +177,7 @@ class _Settings:
 
 def _security_client() -> TestClient:
     app = FastAPI()
+    app.add_middleware(RequestContextMiddleware)
 
     @app.get("/protected", dependencies=[Depends(security.require_api_key)])
     async def protected():
@@ -207,6 +210,18 @@ def test_pro_customer_api_key_is_accepted(monkeypatch):
             subscription_status="active",
         ),
     )
+    monkeypatch.setattr(
+        security,
+        "consume_customer_api_request",
+        lambda principal, monthly_limit: APIUsageDecision(
+            allowed=True,
+            used=12,
+            remaining=988,
+            monthly_limit=monthly_limit,
+            period_start="2026-09-01",
+            period_end="2026-10-01",
+        ),
+    )
 
     response = _security_client().get(
         "/protected",
@@ -214,6 +229,82 @@ def test_pro_customer_api_key_is_accepted(monkeypatch):
     )
 
     assert response.status_code == 200
+    assert response.headers["X-Market-Forecaster-API-Limit"] == "1000"
+    assert response.headers["X-Market-Forecaster-API-Used"] == "12"
+    assert response.headers["X-Market-Forecaster-API-Remaining"] == "988"
+    assert response.headers["X-Market-Forecaster-API-Reset"] == "2026-10-01"
+
+
+def test_customer_api_monthly_quota_exceeded_is_429(monkeypatch):
+    monkeypatch.setattr(
+        security,
+        "load_settings",
+        lambda: _Settings(pro_api_monthly_requests=100),
+    )
+    monkeypatch.setattr(
+        security,
+        "validate_customer_api_key",
+        lambda value: APIKeyPrincipal(
+            key_id="key-1",
+            user_id=USER_ID,
+            key_prefix="mfk_abcdefgh1234",
+            plan="pro",
+            subscription_status="active",
+        ),
+    )
+    monkeypatch.setattr(
+        security,
+        "consume_customer_api_request",
+        lambda principal, monthly_limit: APIUsageDecision(
+            allowed=False,
+            used=100,
+            remaining=0,
+            monthly_limit=monthly_limit,
+            period_start="2026-09-01",
+            period_end="2026-10-01",
+        ),
+    )
+
+    response = _security_client().get(
+        "/protected",
+        headers={"X-API-Key": "mfk_" + "x" * 40},
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Monthly Pro API request quota exceeded"
+    assert response.headers["X-Market-Forecaster-API-Remaining"] == "0"
+
+
+def test_customer_api_metering_outage_is_503(monkeypatch):
+    monkeypatch.setattr(security, "load_settings", lambda: _Settings())
+    monkeypatch.setattr(
+        security,
+        "validate_customer_api_key",
+        lambda value: APIKeyPrincipal(
+            key_id="key-1",
+            user_id=USER_ID,
+            key_prefix="mfk_abcdefgh1234",
+            plan="pro",
+            subscription_status="active",
+        ),
+    )
+
+    def fail_usage(principal, monthly_limit):
+        raise APIKeyStoreError("metering offline")
+
+    monkeypatch.setattr(
+        security,
+        "consume_customer_api_request",
+        fail_usage,
+    )
+
+    response = _security_client().get(
+        "/protected",
+        headers={"X-API-Key": "mfk_" + "x" * 40},
+    )
+
+    assert response.status_code == 503
+    assert "usage metering" in response.json()["detail"].lower()
 
 
 def test_invalid_customer_api_key_is_401(monkeypatch):

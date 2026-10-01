@@ -29,6 +29,7 @@ class APISettings:
     rate_limit_requests: int
     rate_limit_window_seconds: int
     shared_rate_limit_enabled: bool
+    pro_api_monthly_requests: int
 
     @property
     def production(self) -> bool:
@@ -45,6 +46,10 @@ class APISettings:
             raise RuntimeError("MARKET_FORECASTER_ALLOWED_ORIGINS is required in production")
         if "*" in self.allowed_origins and self.allow_credentials:
             raise RuntimeError("Wildcard CORS cannot be used with credentials")
+        if self.production and self.pro_api_monthly_requests <= 0:
+            raise RuntimeError(
+                "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS must be greater than zero in production"
+            )
 
 
 def load_settings() -> APISettings:
@@ -66,6 +71,10 @@ def load_settings() -> APISettings:
         shared_rate_limit_enabled=_bool(
             "MARKET_FORECASTER_SHARED_RATE_LIMIT_ENABLED",
             False,
+        ),
+        pro_api_monthly_requests=_int(
+            "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS",
+            1000,
         ),
     )
     settings.validate()

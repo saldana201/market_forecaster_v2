@@ -18,6 +18,7 @@ def test_production_deploy_enforces_core_feature_flags():
         "DATABASE_PERSISTENCE_ENABLED=true",
         "SHARED_CONTRACT_STORAGE_ENABLED=true",
         "SHARED_AUTHORITY_ENABLED=true",
+        "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000",
     ):
         assert setting in text
 

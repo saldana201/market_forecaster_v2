@@ -34,6 +34,7 @@ def test_api_deploy_requires_existing_app_and_server_secrets():
         "MARKET_FORECASTER_ALLOWED_ORIGINS",
         "MARKET_FORECASTER_SUPABASE_URL",
         "MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY",
+        "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS",
         "SUBSCRIPTIONS_ENABLED",
     ):
         assert f"require_setting {setting}" in text
@@ -52,4 +53,13 @@ def test_api_deploy_verifies_health_readiness_and_customer_key_config():
     assert "/api/v1/health" in text
     assert "/api/v1/ready" in text
     assert "pro_customer_api_keys" in text
-    assert "customer-key authorization is configured" in text
+    assert "pro_api_usage_metering" in text
+    assert "usage metering are configured" in text
+
+
+
+def test_api_deploy_requires_positive_monthly_customer_quota():
+    text = _workflow_text()
+
+    assert "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS must be a positive integer." in text
+    assert "Configured monthly Pro API quota" in text
