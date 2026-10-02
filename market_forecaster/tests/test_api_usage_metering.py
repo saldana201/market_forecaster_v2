@@ -17,6 +17,12 @@ MIGRATION = (
     / "migrations"
     / "20260928230000_api_usage_monthly.sql"
 )
+FIX_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20261002073000_fix_api_usage_rpc_period_start.sql"
+)
 USER_ID = "11111111-1111-4111-8111-111111111111"
 
 
@@ -137,3 +143,15 @@ def test_production_api_settings_reject_non_positive_monthly_quota(monkeypatch):
         assert "MONTHLY_REQUESTS" in str(exc)
     else:
         raise AssertionError("Expected production settings to reject zero API quota")
+
+
+
+def test_usage_rpc_fix_avoids_output_column_name_ambiguity():
+    sql = FIX_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "on conflict on constraint api_usage_monthly_pkey do nothing" in sql
+    assert "update public.api_usage_monthly as usage" in sql
+    assert "usage.period_start = v_period_start" in sql
+    assert "from public.api_usage_monthly as usage" in sql
+    assert "grant execute on function public.consume_market_forecaster_api_request" in sql
+    assert "to service_role" in sql
