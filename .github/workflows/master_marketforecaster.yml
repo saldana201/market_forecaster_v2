@@ -105,6 +105,7 @@ jobs:
               DATABASE_PERSISTENCE_ENABLED=true \
               SHARED_CONTRACT_STORAGE_ENABLED=true \
               SHARED_AUTHORITY_ENABLED=true \
+              MARKET_FORECASTER_API_PUBLIC_URL=https://marketforecaster-api.azurewebsites.net \
               MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
 
           # Market Forecaster is a Streamlit app, not a Flask/Django app.
@@ -238,6 +239,136 @@ jobs:
             --max-time 20 \
             "https://$APP_HOST/" > /dev/null
           echo "Market Forecaster is responding successfully."
+
+      - name: Validate deployed launch readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export_setting() {
+            local name="$1"
+            local required="${2:-true}"
+            local value
+
+            value="$(az webapp config appsettings list \
+              --resource-group "$RESOURCE_GROUP" \
+              --name marketforecaster \
+              --query "[?name=='$name'].value | [0]" \
+              -o tsv)"
+
+            if [ -z "$value" ]; then
+              if [ "$required" = "true" ]; then
+                echo "::error::Readiness setting '$name' is missing or empty."
+                exit 1
+              fi
+              return 0
+            fi
+
+            case "$name" in
+              MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY|STRIPE_SECRET_KEY)
+                echo "::add-mask::$value"
+                ;;
+            esac
+
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          }
+
+          export_setting MARKET_FORECASTER_AUTH_PROVIDER false
+          export_setting MARKET_FORECASTER_SUPABASE_URL
+          export_setting MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY
+          export_setting MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY
+          export_setting SUBSCRIPTIONS_ENABLED
+          export_setting MARKET_FORECASTER_BILLING_MODE
+          export_setting MARKET_FORECASTER_PUBLIC_URL
+          export_setting STRIPE_SECRET_KEY
+          export_setting STRIPE_STANDARD_PRICE_ID
+          export_setting STRIPE_PRO_PRICE_ID
+          export_setting MARKET_FORECASTER_API_PUBLIC_URL false
+
+          echo "DEMO_MODE_ENABLED=true" >> "$GITHUB_ENV"
+          echo "MULTI_USER_ENABLED=true" >> "$GITHUB_ENV"
+          echo "DATABASE_PERSISTENCE_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SHARED_CONTRACT_STORAGE_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SHARED_AUTHORITY_ENABLED=true" >> "$GITHUB_ENV"
+
+      - name: Run strict production readiness gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet cryptography==50.0.1
+          python -m market_forecaster.scripts.production_readiness \
+            --strict \
+            --require-billing \
+            --compact \
+            > production-readiness.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("production-readiness.json").read_text())
+          if not report.get("ready"):
+              raise SystemExit("Production readiness report is not ready")
+
+          checks = {row["name"]: row for row in report.get("checks", [])}
+          for required in (
+              "managed_authentication",
+              "persistent_browser_auth_session",
+              "persistent_user_data",
+              "shared_forecast_contract_storage",
+              "shared_forecast_authority",
+              "demo_contracts",
+              "stripe_subscriptions",
+              "stripe_price_catalog",
+              "pro_api_key_store",
+              "pro_api_usage_metering",
+          ):
+              if checks.get(required, {}).get("status") != "PASS":
+                  raise SystemExit(f"Readiness check failed: {required}")
+
+          print(
+              "Strict launch readiness passed, including Stripe catalog, "
+              "persistent auth/data, Demo contracts, and Pro API metering."
+          )
+          PY
+
+      - name: Verify dedicated Pro API after UI deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent \
+            --retry 6 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            --max-time 20 \
+            "https://marketforecaster-api.azurewebsites.net/api/v1/ready" \
+            > pro-api-ready.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ready = json.loads(Path("pro-api-ready.json").read_text())
+          if ready.get("status") != "ready":
+              raise SystemExit("Dedicated Pro API is not ready")
+          metering = ready.get("pro_api_usage_metering") or {}
+          if not metering.get("configured"):
+              raise SystemExit("Dedicated Pro API metering is not configured")
+          if int(metering.get("monthly_request_limit") or 0) != 1000:
+              raise SystemExit("Dedicated Pro API monthly quota is not restored to 1000")
+          print("Dedicated Pro API is ready with the 1,000-request monthly allowance.")
+          PY
+
+      - name: Upload readiness report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketforecaster-production-readiness-${{ github.run_id }}
+          path: |
+            production-readiness.json
+            pro-api-ready.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Capture Azure diagnostics on deployment failure
         if: failure()

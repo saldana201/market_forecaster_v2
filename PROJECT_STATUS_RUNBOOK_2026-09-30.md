@@ -1,6 +1,6 @@
 # Market Forecaster — Project Status Runbook
 
-Status date: 2026-10-01 (America/Chicago)
+Status date: 2026-10-02 (America/Chicago)
 
 This document is the current launch-status checklist for Market Forecaster. It separates completed work from remaining release work and post-launch expansion.
 
@@ -15,10 +15,10 @@ Current state:
   - Standard: USD 19.99/month
   - Pro: USD 39.99/month
 - The remaining launch work is concentrated in:
-  - customer API acceptance testing and UI publication of the dedicated API hostname
-  - end-to-end API quota/revocation testing
-  - resolving the automated Stripe price-catalog validation exception before live billing
+  - automated strict production-readiness validation
+  - resolving any Stripe catalog issue surfaced by the strict gate
   - production security/backup/monitoring hardening
+  - final Standard-plan API denial check
   - live Stripe cutover
 
 The product is test-mode billing capable, but it is not yet ready for public live billing/API launch.
@@ -199,8 +199,8 @@ Completed:
 - [x] Run the manual API deployment workflow.
 - [x] Verify /api/v1/health.
 - [x] Verify /api/v1/ready.
-- [ ] Set/publish on Streamlit UI:
-  - MARKET_FORECASTER_API_PUBLIC_URL=https://<api-host>
+- [x] Streamlit deployment now persists:
+  - MARKET_FORECASTER_API_PUBLIC_URL=https://marketforecaster-api.azurewebsites.net
   - MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
 - [ ] Consider custom API hostname later:
   - api.marketforecaster.oneeightaisystems.com
@@ -209,26 +209,28 @@ Status: DEDICATED API HOST PROVISIONED, DEPLOYED, HEALTHY, AND METERING-READY.
 
 ## 8. Required API acceptance tests
 
-After the usage migration and API host are live:
+Completed live API acceptance:
 
-- [ ] Create a Pro customer API key.
-- [ ] Call one protected endpoint using X-API-Key.
-- [ ] Confirm HTTP 200.
-- [ ] Confirm API usage changes from 0 to 1.
-- [ ] Confirm response reports the correct limit / used / remaining / reset values.
-- [ ] Confirm Account -> API Access shows the same usage count.
-- [ ] Revoke the key.
-- [ ] Confirm the same request returns HTTP 401.
-- [ ] Temporarily lower sandbox/test quota to 3 requests.
-- [ ] Confirm request 1 succeeds.
-- [ ] Confirm request 2 succeeds.
-- [ ] Confirm request 3 succeeds.
-- [ ] Confirm request 4 returns HTTP 429.
-- [ ] Restore quota to 1,000.
-- [ ] Verify usage remains account-wide even when multiple API keys are created.
-- [ ] Verify Standard plan cannot authorize API requests.
+- [x] Create a Pro customer API key.
+- [x] Call a protected endpoint using X-API-Key.
+- [x] Confirm HTTP 200.
+- [x] Confirm API usage changes from 0 to 1.
+- [x] Confirm response reports the correct limit / used / remaining / reset values.
+- [x] Revoke the key.
+- [x] Confirm the same request is rejected as an invalid/inactive API key.
+- [x] Confirm rejected revoked-key request does not consume quota.
+- [x] Temporarily lower sandbox/test quota to 3 requests.
+- [x] Confirm allowed requests increment usage to the configured limit.
+- [x] Confirm the next request returns HTTP 429 with monthly quota exceeded.
+- [x] Verify usage remains account-wide across multiple API keys. The second key inherited the first key's account usage count.
+- [x] Fix and permanently migrate the live `period_start` ambiguity discovered in the usage RPC.
 
-Status: PENDING dedicated API deployment.
+Remaining:
+- [ ] Confirm Account -> API Access displays the same current usage count after the next deployment.
+- [ ] Reconcile API launch quota back to 1,000 and verify `/api/v1/ready`.
+- [ ] Verify Standard plan cannot authorize customer API requests.
+
+Status: CORE PRO API ACCEPTANCE PASSED; THREE FINAL REGRESSION CHECKS REMAIN.
 
 ## 9. Production data / backup readiness
 
@@ -313,17 +315,17 @@ The project should not be called production-complete until every item below is c
 - [x] API usage-metering migration applied.
 - [x] Dedicated Azure FastAPI host provisioned.
 - [x] Dedicated API deployment passes /health and /ready.
-- [ ] Customer API usage count tested end-to-end.
-- [ ] API key revocation tested against live API host.
-- [ ] Quota exhaustion tested.
+- [x] Customer API usage count tested end-to-end.
+- [x] API key revocation tested against live API host.
+- [x] Quota exhaustion tested.
 - [ ] Automated Stripe Standard/Pro recurring-price catalog validator passes.
 - [ ] Supabase leaked-password protection addressed. Current security advisor shows this as the only warning.
 - [ ] Backup/PITR plan confirmed.
 - [ ] Restore drill completed.
 - [ ] Core Azure operational alerts configured.
 - [ ] Demo contract refresh / fallback launch check completed.
-- [ ] Production readiness --strict passes.
-- [ ] Production readiness --strict --require-billing passes.
+- [ ] Automated post-deploy production readiness --strict passes.
+- [ ] Automated post-deploy production readiness --strict --require-billing passes.
 - [ ] Live Stripe products/prices/webhook configured.
 - [ ] Live billing-mode safety check passes.
 - [ ] Controlled live subscription acceptance succeeds.
@@ -348,6 +350,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Publish the dedicated API hostname into the Streamlit UI and complete the customer API quickstart experience.
-2. Run the full Pro API acceptance suite: usage count, revocation, account-wide quota, and quota exhaustion.
-3. Close the Stripe catalog validation issue and remaining production-hardening items before live billing cutover.
+1. Merge the launch-readiness hardening so every production deploy runs the strict billing/catalog gate and verifies the API is back at the 1,000-request launch allowance.
+2. Address any failure reported by that automated gate, then complete Supabase leaked-password protection and backup/restore readiness.
+3. Configure Azure operational alerts and finish the live Stripe cutover checklist.

@@ -58,3 +58,19 @@ def test_api_provisioning_sets_fastapi_runtime():
     assert "PYTHON:3.12" in text
     assert "python -m uvicorn market_forecaster.api.main:app" in text
     assert "--port 8000" in text
+
+
+
+def test_api_provisioning_summary_does_not_execute_markdown_backticks():
+    text = _text()
+
+    assert 'printf \'%s\\n\' "- Azure Web App: $TARGET_APP"' in text
+    assert 'printf \'%s\\n\' "- Default host: https://$APP_HOST"' in text
+    assert 'echo "- Azure Web App: `\$TARGET_APP`"' not in text
+
+
+def test_api_provisioning_reconciles_launch_quota_to_1000():
+    text = _text()
+
+    assert "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000" in text
+    assert "Launch allowance reconciled to MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000" in text

@@ -84,9 +84,9 @@ jobs:
           {
             echo "## Market Forecaster Pro API host provisioned"
             echo ""
-            echo "- Azure Web App: `$TARGET_APP`"
-            echo "- Default host: `https://$APP_HOST`"
-            echo "- Reused App Service plan: `$PLAN_NAME`"
+            printf '%s\n' "- Azure Web App: $TARGET_APP"
+            printf '%s\n' "- Default host: https://$APP_HOST"
+            printf '%s\n' "- Reused App Service plan: $PLAN_NAME"
             echo ""
             echo "Before deployment, configure these required server-only settings on the API Web App:"
             echo "- MARKET_FORECASTER_API_KEY"
@@ -94,4 +94,5 @@ jobs:
             echo ""
             echo "Optional hardening:"
             echo "- MARKET_FORECASTER_RATE_LIMIT_HASH_SECRET (otherwise the internal API key is used as the HMAC secret)"
+            echo "- Launch allowance reconciled to MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000"
           } >> "$GITHUB_STEP_SUMMARY"
