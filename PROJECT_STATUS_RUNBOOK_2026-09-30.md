@@ -15,7 +15,7 @@ Current state:
   - Standard: USD 19.99/month
   - Pro: USD 39.99/month
 - The remaining launch work is concentrated in:
-  - provisioning/deploying the dedicated FastAPI Azure App Service
+  - customer API acceptance testing and UI publication of the dedicated API hostname
   - end-to-end API quota/revocation testing
   - resolving the automated Stripe price-catalog validation exception before live billing
   - production security/backup/monitoring hardening
@@ -124,7 +124,7 @@ Status: COMPLETE for sandbox; revalidate during live cutover.
 - [x] Customer API key rate limiting follows the key across source IPs.
 - [x] API key management user-tested successfully.
 
-Status: IMPLEMENTED; dedicated API host still required for real customer API use.
+Status: IMPLEMENTED; dedicated API host is now provisioned and deployed.
 
 ## 6. API monetization foundation
 
@@ -152,11 +152,12 @@ Completed activation:
 - [x] Verified `consume_market_forecaster_api_request` is executable by
   `service_role` and not by `anon` or `authenticated`.
 
-Still required:
-- [ ] Verify the dedicated API host reports API usage metering as configured in
-  `/api/v1/ready` after deployment.
+Completed host validation:
+- [x] Dedicated API deployment reports customer API-key authorization configured.
+- [x] Dedicated API deployment reports API usage metering configured.
+- [x] Monthly Pro API allowance verified at 1,000 requests.
 
-Status: CODE + DATABASE ACTIVATION COMPLETE; HOST VALIDATION PENDING.
+Status: CODE + DATABASE + HOST VALIDATION COMPLETE.
 
 ## 7. Dedicated FastAPI deployment
 
@@ -176,12 +177,13 @@ Implemented in repository:
 - [x] Workflow verifies health/readiness after deployment.
 - [x] Workflow refuses to create Azure resources automatically.
 
-Still required:
+Completed:
 
-- [ ] Provision dedicated Azure Web App:
-  - recommended name: marketforecaster-api
-- [ ] Choose an appropriate low-cost initial App Service plan while retaining ability to scale.
-- [ ] Configure:
+- [x] Provisioned dedicated Azure Web App:
+  - name: marketforecaster-api
+  - host: marketforecaster-api.azurewebsites.net
+- [x] Reused existing App Service plan `ASP-OneEightAISystems-a62e` to avoid a second paid compute plan.
+- [x] Configure:
   - MARKET_FORECASTER_ENV=production
   - MARKET_FORECASTER_API_KEY=<strong server-only secret>
   - MARKET_FORECASTER_ALLOWED_ORIGINS=https://marketforecaster.oneeightaisystems.com
@@ -194,16 +196,16 @@ Still required:
   - MARKET_FORECASTER_RATE_LIMIT_REQUESTS=30
   - MARKET_FORECASTER_RATE_LIMIT_WINDOW_SECONDS=60
   - MARKET_FORECASTER_RATE_LIMIT_HASH_SECRET=<strong server-only secret>
-- [ ] Run the manual API deployment workflow.
-- [ ] Verify /api/v1/health.
-- [ ] Verify /api/v1/ready.
-- [ ] Set on Streamlit UI:
+- [x] Run the manual API deployment workflow.
+- [x] Verify /api/v1/health.
+- [x] Verify /api/v1/ready.
+- [ ] Set/publish on Streamlit UI:
   - MARKET_FORECASTER_API_PUBLIC_URL=https://<api-host>
   - MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000
 - [ ] Consider custom API hostname later:
   - api.marketforecaster.oneeightaisystems.com
 
-Status: DEPLOYMENT WORKFLOW READY; AZURE RESOURCE NOT YET PROVISIONED.
+Status: DEDICATED API HOST PROVISIONED, DEPLOYED, HEALTHY, AND METERING-READY.
 
 ## 8. Required API acceptance tests
 
@@ -309,8 +311,8 @@ Status: SOURCE CODE CURRENT; latest production deployment confirmation still req
 The project should not be called production-complete until every item below is checked:
 
 - [x] API usage-metering migration applied.
-- [ ] Dedicated Azure FastAPI host provisioned.
-- [ ] Dedicated API deployment passes /health and /ready.
+- [x] Dedicated Azure FastAPI host provisioned.
+- [x] Dedicated API deployment passes /health and /ready.
 - [ ] Customer API usage count tested end-to-end.
 - [ ] API key revocation tested against live API host.
 - [ ] Quota exhaustion tested.
@@ -346,6 +348,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Provision and deploy the dedicated Azure FastAPI host.
-2. Run the full Pro API acceptance suite, including the customer usage endpoint and internal-route access boundary.
+1. Publish the dedicated API hostname into the Streamlit UI and complete the customer API quickstart experience.
+2. Run the full Pro API acceptance suite: usage count, revocation, account-wide quota, and quota exhaustion.
 3. Close the Stripe catalog validation issue and remaining production-hardening items before live billing cutover.
