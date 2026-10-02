@@ -1,0 +1,95 @@
+name: Provision Market Forecaster Pro API host
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/provision_marketforecaster_api.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: marketforecaster-api-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6B5948FF98A541699160F65E91D4A6C4 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5B9FC7F1D0CA4531A6678659F1C575E9 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F60C40A3C2E74BF1BF6E1EE01CCA149C }}
+
+      - name: Resolve existing UI host and App Service plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_APP="marketforecaster"
+          RESOURCE_GROUP="$(az webapp list             --query "[?name=='$SOURCE_APP'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Could not resolve the existing marketforecaster Web App."
+            exit 1
+          fi
+
+          PLAN_ID="$(az webapp show             --resource-group "$RESOURCE_GROUP"             --name "$SOURCE_APP"             --query serverFarmId -o tsv)"
+          PLAN_NAME="${PLAN_ID##*/}"
+          if [ -z "$PLAN_NAME" ]; then
+            echo "::error::Could not resolve the App Service plan used by marketforecaster."
+            exit 1
+          fi
+
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> "$GITHUB_ENV"
+          echo "PLAN_NAME=$PLAN_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_APP=$SOURCE_APP" >> "$GITHUB_ENV"
+
+      - name: Provision dedicated API Web App
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET_APP="marketforecaster-api"
+          if [ -z "$(az webapp list --query "[?name=='$TARGET_APP'].name | [0]" -o tsv)" ]; then
+            az webapp create               --resource-group "$RESOURCE_GROUP"               --plan "$PLAN_NAME"               --name "$TARGET_APP"               --runtime "PYTHON:3.12"               --https-only true               > /dev/null
+          fi
+
+          APP_HOST="$(az webapp show             --resource-group "$RESOURCE_GROUP"             --name "$TARGET_APP"             --query defaultHostName -o tsv)"
+
+          echo "TARGET_APP=$TARGET_APP" >> "$GITHUB_ENV"
+          echo "APP_HOST=$APP_HOST" >> "$GITHUB_ENV"
+
+      - name: Configure non-secret API settings
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          az webapp config appsettings set             --resource-group "$RESOURCE_GROUP"             --name "$TARGET_APP"             --settings               SCM_DO_BUILD_DURING_DEPLOYMENT=true               ENABLE_ORYX_BUILD=true               MARKET_FORECASTER_ENV=production               MARKET_FORECASTER_ALLOWED_ORIGINS=https://marketforecaster.oneeightaisystems.com               MARKET_FORECASTER_ALLOW_CREDENTIALS=false               MARKET_FORECASTER_SUPABASE_URL=https://pbttpkbkimqdoilmwryi.supabase.co               SUBSCRIPTIONS_ENABLED=true               MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000               MARKET_FORECASTER_SHARED_RATE_LIMIT_ENABLED=true               MARKET_FORECASTER_RATE_LIMIT_REQUESTS=30               MARKET_FORECASTER_RATE_LIMIT_WINDOW_SECONDS=60               MULTI_USER_ENABLED=true               SHARED_CONTRACT_STORAGE_ENABLED=true               SHARED_AUTHORITY_ENABLED=true             > /dev/null
+
+          az webapp config set             --resource-group "$RESOURCE_GROUP"             --name "$TARGET_APP"             --linux-fx-version "PYTHON|3.12"             --startup-file "python -m uvicorn market_forecaster.api.main:app --host 0.0.0.0 --port 8000 --workers 1"             > /dev/null
+
+          echo "Provisioned dedicated API host on the existing App Service plan."
+
+      - name: Write provisioning summary
+        shell: bash
+        run: |
+          {
+            echo "## Market Forecaster Pro API host provisioned"
+            echo ""
+            echo "- Azure Web App: `$TARGET_APP`"
+            echo "- Default host: `https://$APP_HOST`"
+            echo "- Reused App Service plan: `$PLAN_NAME`"
+            echo ""
+            echo "Before deployment, configure these server-only settings on the API Web App:"
+            echo "- MARKET_FORECASTER_API_KEY"
+            echo "- MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY"
+            echo "- MARKET_FORECASTER_RATE_LIMIT_HASH_SECRET"
+          } >> "$GITHUB_STEP_SUMMARY"
