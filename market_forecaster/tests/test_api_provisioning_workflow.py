@@ -48,7 +48,8 @@ def test_api_provisioning_does_not_embed_server_secrets():
     assert "MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY=" not in text
     assert "MARKET_FORECASTER_API_KEY=" not in text
     assert "MARKET_FORECASTER_RATE_LIMIT_HASH_SECRET=" not in text
-    assert "Before deployment, configure these server-only settings" in text
+    assert "Before deployment, configure these required server-only settings" in text
+    assert "Optional hardening:" in text
 
 
 def test_api_provisioning_sets_fastapi_runtime():
