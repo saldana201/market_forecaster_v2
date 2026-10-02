@@ -260,6 +260,8 @@ Existing:
 
 Still recommended:
 
+- [x] Hourly secretless GitHub production smoke monitor for the custom-domain UI and dedicated API health/readiness.
+- [x] Hourly verification of Pro customer-key authorization, usage metering, 1,000-request allowance, and shared API rate limiting.
 - [ ] Azure 5xx-rate alert.
 - [ ] API response-latency alert.
 - [ ] CPU alert.
@@ -270,7 +272,7 @@ Still recommended:
 - [ ] Subscription webhook failure visibility.
 - [ ] Optional later: Azure Front Door / WAF / API Management when API traffic justifies it.
 
-Status: CORE OBSERVABILITY EXISTS; ALERTING PENDING.
+Status: CORE OBSERVABILITY + HOURLY PUBLIC SMOKE MONITOR IMPLEMENTED; AZURE METRIC/NOTIFICATION ALERTS PENDING.
 
 ## 11. Demo and forecast authority
 
@@ -318,14 +320,14 @@ The project should not be called production-complete until every item below is c
 - [x] Customer API usage count tested end-to-end.
 - [x] API key revocation tested against live API host.
 - [x] Quota exhaustion tested.
-- [ ] Automated Stripe Standard/Pro recurring-price catalog validator passes.
-- [ ] Supabase leaked-password protection addressed. Current security advisor shows this as the only warning.
-- [ ] Backup/PITR plan confirmed.
+- [x] Automated Stripe Standard/Pro recurring-price catalog validator passes in the strict post-deploy gate.
+- [ ] Supabase leaked-password protection decision addressed. Current Supabase organization is on the Free plan; leaked-password protection is available on Pro and above, so enabling it requires a plan upgrade.
+- [ ] Backup plan confirmed. Current Supabase organization is on the Free plan, which does not include the Pro daily-backup retention described by Supabase; choose either a Supabase plan upgrade or a documented off-site logical-backup process before paid launch.
 - [ ] Restore drill completed.
 - [ ] Core Azure operational alerts configured.
 - [ ] Demo contract refresh / fallback launch check completed.
-- [ ] Automated post-deploy production readiness --strict passes.
-- [ ] Automated post-deploy production readiness --strict --require-billing passes.
+- [x] Automated post-deploy production readiness --strict passes.
+- [x] Automated post-deploy production readiness --strict --require-billing passes.
 - [ ] Live Stripe products/prices/webhook configured.
 - [ ] Live billing-mode safety check passes.
 - [ ] Controlled live subscription acceptance succeeds.
@@ -350,6 +352,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Merge the launch-readiness hardening so every production deploy runs the strict billing/catalog gate and verifies the API is back at the 1,000-request launch allowance.
-2. Address any failure reported by that automated gate, then complete Supabase leaked-password protection and backup/restore readiness.
-3. Configure Azure operational alerts and finish the live Stripe cutover checklist.
+1. Merge and activate hourly production smoke monitoring, then verify the first scheduled/manual run.
+2. Decide the Supabase production posture: upgrade to a plan that supports leaked-password protection and platform backups, or keep Free temporarily with documented compensating password controls and off-site logical backups.
+3. Configure Azure metric/notification alerts, verify Standard cannot authorize customer API calls, and finish the live Stripe cutover checklist.
