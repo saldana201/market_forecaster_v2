@@ -1,6 +1,11 @@
 name: Monitor Market Forecaster production
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/monitor_marketforecaster_production.yml'
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
