@@ -63,3 +63,13 @@ def test_api_deploy_requires_positive_monthly_customer_quota():
 
     assert "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS must be a positive integer." in text
     assert "Configured monthly Pro API quota" in text
+
+
+
+def test_api_deploy_publishes_dedicated_host_to_streamlit_ui():
+    text = _workflow_text()
+
+    assert "Publish API hostname to Streamlit UI" in text
+    assert 'UI_APP="marketforecaster"' in text
+    assert 'MARKET_FORECASTER_API_PUBLIC_URL="https://$APP_HOST"' in text
+    assert "MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000" in text

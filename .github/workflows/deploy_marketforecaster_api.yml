@@ -190,6 +190,22 @@ jobs:
           )
           PY
 
+      - name: Publish API hostname to Streamlit UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI_APP="marketforecaster"
+
+          az webapp config appsettings set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$UI_APP" \
+            --settings \
+              MARKET_FORECASTER_API_PUBLIC_URL="https://$APP_HOST" \
+              MARKET_FORECASTER_PRO_API_MONTHLY_REQUESTS=1000 \
+            > /dev/null
+
+          echo "Published dedicated API hostname to the Streamlit UI."
+
       - name: Upload API diagnostics on failure
         if: failure()
         continue-on-error: true
