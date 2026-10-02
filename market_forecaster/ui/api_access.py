@@ -270,6 +270,7 @@ def render_api_access_panel() -> None:
                         try:
                             revoke_user_api_key(identity, key_id)
                             st.session_state.pop("new_customer_api_key_once", None)
+                            st.session_state.pop("customer_api_test_result", None)
                             st.rerun()
                         except APIKeyStoreError as exc:
                             st.error(str(exc))
