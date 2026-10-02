@@ -12,6 +12,9 @@ def _text() -> str:
 def test_production_monitor_runs_hourly_and_manually():
     text = _text()
 
+    assert "push:" in text
+    assert "branches:" in text
+    assert "master" in text
     assert "schedule:" in text
     assert "cron: '17 * * * *'" in text
     assert "workflow_dispatch:" in text
