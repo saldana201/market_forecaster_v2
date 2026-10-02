@@ -15,7 +15,7 @@ def test_api_provisioning_reuses_existing_app_service_plan():
     assert "serverFarmId" in text
     assert "PLAN_NAME" in text
     assert "az webapp create" in text
-    assert "--plan "$PLAN_NAME"" in text
+    assert '--plan "$PLAN_NAME"' in text
     assert "az appservice plan create" not in text
 
 
