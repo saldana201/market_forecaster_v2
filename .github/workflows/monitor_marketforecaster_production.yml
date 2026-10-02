@@ -1,0 +1,110 @@
+name: Monitor Market Forecaster production
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketforecaster-production-monitor
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Streamlit custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          UI_URL="https://marketforecaster.oneeightaisystems.com/"
+          UI_TIME="$(curl             --fail             --show-error             --silent             --location             --retry 3             --retry-delay 5             --retry-all-errors             --max-time 30             --output /dev/null             --write-out '%{time_total}'             "$UI_URL")"
+
+          echo "UI_TIME_SECONDS=$UI_TIME" >> "$GITHUB_ENV"
+          echo "Market Forecaster UI responded successfully in ${UI_TIME}s."
+
+      - name: Check Pro API health and readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          API_ROOT="https://marketforecaster-api.azurewebsites.net"
+
+          HEALTH_TIME="$(curl             --fail             --show-error             --silent             --retry 3             --retry-delay 5             --retry-all-errors             --max-time 20             --output api-health.json             --write-out '%{time_total}'             "$API_ROOT/api/v1/health")"
+
+          READY_TIME="$(curl             --fail             --show-error             --silent             --retry 3             --retry-delay 5             --retry-all-errors             --max-time 20             --output api-ready.json             --write-out '%{time_total}'             "$API_ROOT/api/v1/ready")"
+
+          echo "API_HEALTH_TIME_SECONDS=$HEALTH_TIME" >> "$GITHUB_ENV"
+          echo "API_READY_TIME_SECONDS=$READY_TIME" >> "$GITHUB_ENV"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          health = json.loads(Path("api-health.json").read_text())
+          ready = json.loads(Path("api-ready.json").read_text())
+
+          if health.get("status") != "ok":
+              raise SystemExit("Pro API health endpoint did not report ok")
+
+          if ready.get("status") != "ready":
+              raise SystemExit("Pro API readiness endpoint did not report ready")
+
+          customer_keys = ready.get("pro_customer_api_keys") or {}
+          if not customer_keys.get("configured"):
+              raise SystemExit("Pro customer API-key authorization is unavailable")
+
+          metering = ready.get("pro_api_usage_metering") or {}
+          if not metering.get("configured"):
+              raise SystemExit("Pro API usage metering is unavailable")
+
+          monthly_limit = int(metering.get("monthly_request_limit") or 0)
+          if monthly_limit != 1000:
+              raise SystemExit(
+                  f"Unexpected Pro API monthly allowance: {monthly_limit}; expected 1000"
+              )
+
+          shared_limit = ready.get("shared_api_rate_limit") or {}
+          if not shared_limit.get("configured"):
+              raise SystemExit("Shared API rate limiting is unavailable")
+
+          print("Pro API health, authorization, metering, quota, and rate limiting are ready.")
+          PY
+
+      - name: Write production health summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## Market Forecaster production health"
+            echo ""
+            echo "- UI: healthy"
+            echo "- Pro API: healthy and ready"
+            echo "- Customer API authorization: configured"
+            echo "- API usage metering: configured"
+            echo "- Pro monthly allowance: 1,000 requests"
+            echo "- Shared API rate limiting: configured"
+            echo ""
+            echo "### Response times"
+            echo "- UI: ${UI_TIME_SECONDS}s"
+            echo "- API health: ${API_HEALTH_TIME_SECONDS}s"
+            echo "- API readiness: ${API_READY_TIME_SECONDS}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketforecaster-production-monitor-${{ github.run_id }}
+          path: |
+            api-health.json
+            api-ready.json
+          if-no-files-found: ignore
+          retention-days: 7
