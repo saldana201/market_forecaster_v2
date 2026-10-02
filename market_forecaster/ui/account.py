@@ -7,6 +7,10 @@ import streamlit as st
 
 from market_forecaster.auth.factory import auth_configuration_status, get_auth_provider
 from market_forecaster.auth.browser_session_store import BrowserSessionError
+from market_forecaster.auth.password_policy import (
+    PASSWORD_POLICY_HELP,
+    password_policy_message,
+)
 from market_forecaster.auth.persistent_session import (
     issue_persistent_browser_session,
     revoke_persistent_browser_session,
@@ -148,7 +152,7 @@ def _register_form() -> None:
             "Password",
             type="password",
             key="account_register_password",
-            help="Use at least 8 characters.",
+            help=PASSWORD_POLICY_HELP,
         )
         confirm = st.text_input(
             "Confirm password",
@@ -162,8 +166,9 @@ def _register_form() -> None:
     if not email.strip():
         st.warning("Enter an email address.")
         return
-    if len(password) < 8:
-        st.warning("Use a password with at least 8 characters.")
+    policy_message = password_policy_message(password)
+    if policy_message:
+        st.warning(policy_message)
         return
     if password != confirm:
         st.warning("Passwords do not match.")
@@ -355,7 +360,7 @@ def _security_panel() -> None:
             "New password",
             type="password",
             key="account_new_password",
-            help="Use at least 8 characters.",
+            help=PASSWORD_POLICY_HELP,
         )
         confirm_password = st.text_input(
             "Confirm new password",
@@ -368,8 +373,9 @@ def _security_panel() -> None:
             key="account_update_password",
             use_container_width=True,
         ):
-            if len(new_password) < 8:
-                st.warning("Use a password with at least 8 characters.")
+            policy_message = password_policy_message(new_password)
+            if policy_message:
+                st.warning(policy_message)
                 return
             if new_password != confirm_password:
                 st.warning("Passwords do not match.")

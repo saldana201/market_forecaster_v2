@@ -15,10 +15,10 @@ Current state:
   - Standard: USD 19.99/month
   - Pro: USD 39.99/month
 - The remaining launch work is concentrated in:
-  - automated strict production-readiness validation
-  - resolving any Stripe catalog issue surfaced by the strict gate
-  - production security/backup/monitoring hardening
+  - production security / backup hardening
+  - Azure metric and notification alerts
   - final Standard-plan API denial check
+  - Demo fallback launch verification
   - live Stripe cutover
 
 The product is test-mode billing capable, but it is not yet ready for public live billing/API launch.
@@ -53,11 +53,18 @@ Status: COMPLETE for current launch scope.
 - [x] User data protected by Supabase RLS.
 - [x] API-key tables explicitly denied to browser roles.
 
-Remaining:
-- [ ] Enable Supabase leaked-password protection.
-- [ ] Re-run Supabase security advisor and confirm no unresolved launch-blocking warnings.
+Completed compensating control:
+- [x] Market Forecaster now requires at least 12 characters plus uppercase,
+  lowercase, numeric, and symbol characters for new passwords created through
+  the application.
 
-Status: FUNCTIONALLY COMPLETE; one security-hardening item remains.
+Remaining:
+- [ ] Decide whether to upgrade Supabase from Free to a plan that includes
+  leaked-password protection.
+- [ ] Re-run Supabase security advisor after that decision. The current advisor
+  warning is the Free-plan leaked-password-protection limitation.
+
+Status: FUNCTIONALLY COMPLETE; PROVIDER-SIDE PASSWORD BREACH CHECK REMAINS PLAN-DEPENDENT.
 
 ## 3. Stripe subscriptions
 
@@ -85,10 +92,11 @@ Current sandbox prices:
 - Standard: USD 19.99/month
 - Pro: USD 39.99/month
 
+Completed:
+- [x] Automated no-charge Stripe recurring-price catalog validation passes for
+  both Standard and Pro in the strict production-readiness gate.
+
 Remaining:
-- [ ] Resolve the automated Stripe recurring-price catalog validation exception.
-- [ ] Do not treat this exception as resolved merely because the Stripe Dashboard products look correct.
-- [ ] Re-run the no-charge catalog validator until both Standard and Pro pass.
 - [ ] Keep billing mode in test until live-cutover checklist passes.
 - [ ] At live cutover, create/configure live Price IDs and live webhook signing secret.
 - [ ] Run one controlled live end-to-end acceptance transaction before public launch.
@@ -226,8 +234,8 @@ Completed live API acceptance:
 - [x] Fix and permanently migrate the live `period_start` ambiguity discovered in the usage RPC.
 
 Remaining:
-- [ ] Confirm Account -> API Access displays the same current usage count after the next deployment.
-- [ ] Reconcile API launch quota back to 1,000 and verify `/api/v1/ready`.
+- [ ] Confirm Account -> API Access displays the same current usage count after the latest deployment.
+- [x] API launch quota reconciled back to 1,000 and verified through `/api/v1/ready`.
 - [ ] Verify Standard plan cannot authorize customer API requests.
 
 Status: CORE PRO API ACCEPTANCE PASSED; THREE FINAL REGRESSION CHECKS REMAIN.
@@ -306,9 +314,12 @@ Status: IMPLEMENTED; final launch verification remains.
 - [x] PR #46 — Stripe lifecycle hardening / duplicate subscription protection.
 - [x] PR #47 — monetizable API usage metering and monthly quotas.
 - [x] PR #47 CI passed before merge.
-- [ ] Verify the latest master commit containing PR #47 has completed production deployment.
+- [x] Latest launch-readiness master deployment completed successfully.
+- [x] Strict post-deploy billing/catalog readiness passed.
+- [x] Dedicated API readiness verified at the 1,000-request launch allowance.
+- [x] Hourly production monitor merged and first run passed.
 
-Status: SOURCE CODE CURRENT; latest production deployment confirmation still required.
+Status: SOURCE CODE + PRODUCTION DEPLOYMENT CURRENT.
 
 ## 13. Final launch-blocker checklist
 
@@ -352,6 +363,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Merge and activate hourly production smoke monitoring, then verify the first scheduled/manual run.
-2. Decide the Supabase production posture: upgrade to a plan that supports leaked-password protection and platform backups, or keep Free temporarily with documented compensating password controls and off-site logical backups.
+1. Merge the stronger application password policy and verify signup/password-change UX.
+2. Decide the Supabase production posture: upgrade for leaked-password protection and platform backups, or stay Free temporarily and implement a documented off-site logical-backup process.
 3. Configure Azure metric/notification alerts, verify Standard cannot authorize customer API calls, and finish the live Stripe cutover checklist.

@@ -8,6 +8,21 @@ The first adapter is Supabase Auth. The rest of the application talks to the pro
 
 Market Forecaster does not store or hash account passwords.
 
+The application also applies an additional password policy before sending account
+creation or password-change requests to Supabase:
+
+- minimum 12 characters
+- at least one uppercase letter
+- at least one lowercase letter
+- at least one number
+- at least one non-whitespace symbol
+
+This is a compensating application control. Supabase remains the authentication
+authority, and this policy does not replace provider-side leaked-password checks.
+The current Supabase organization is on the Free plan, where leaked-password
+protection is not available; enabling that provider-side feature requires a paid
+Supabase plan that includes it.
+
 ## Feature flag
 
 Authentication remains off until explicitly enabled:
