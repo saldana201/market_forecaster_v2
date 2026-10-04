@@ -1,0 +1,214 @@
+name: Prepare Azure Monitor alerts
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/provision_azure_monitor_alerts.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Create/update the Azure Monitor alert rules and email action group'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: marketforecaster-azure-monitor-alerts
+  cancel-in-progress: false
+
+jobs:
+  validate-and-provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6B5948FF98A541699160F65E91D4A6C4 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5B9FC7F1D0CA4531A6678659F1C575E9 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F60C40A3C2E74BF1BF6E1EE01CCA149C }}
+
+      - name: Resolve Market Forecaster Azure resources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          UI_APP="marketforecaster"
+          API_APP="marketforecaster-api"
+
+          RESOURCE_GROUP="$(az webapp list             --query "[?name=='$UI_APP'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Could not resolve the Market Forecaster resource group."
+            exit 1
+          fi
+
+          UI_ID="$(az webapp show             --resource-group "$RESOURCE_GROUP"             --name "$UI_APP"             --query id -o tsv)"
+
+          API_ID="$(az webapp show             --resource-group "$RESOURCE_GROUP"             --name "$API_APP"             --query id -o tsv)"
+
+          PLAN_ID="$(az webapp show             --resource-group "$RESOURCE_GROUP"             --name "$UI_APP"             --query serverFarmId -o tsv)"
+
+          for value in "$UI_ID" "$API_ID" "$PLAN_ID"; do
+            if [ -z "$value" ]; then
+              echo "::error::Could not resolve all required Market Forecaster Azure resources."
+              exit 1
+            fi
+          done
+
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> "$GITHUB_ENV"
+          echo "UI_APP=$UI_APP" >> "$GITHUB_ENV"
+          echo "API_APP=$API_APP" >> "$GITHUB_ENV"
+          echo "UI_ID=$UI_ID" >> "$GITHUB_ENV"
+          echo "API_ID=$API_ID" >> "$GITHUB_ENV"
+          echo "PLAN_ID=$PLAN_ID" >> "$GITHUB_ENV"
+
+      - name: Validate required Azure metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          require_metric() {
+            local resource_id="$1"
+            local metric="$2"
+            local label="$3"
+
+            if ! az monitor metrics list-definitions               --resource "$resource_id"               --query "[?name.value=='$metric'].name.value | [0]"               -o tsv | grep -qx "$metric"; then
+              echo "::error::$label metric '$metric' is unavailable."
+              exit 1
+            fi
+          }
+
+          require_metric "$UI_ID" "Http5xx" "UI"
+          require_metric "$UI_ID" "HttpResponseTime" "UI"
+          require_metric "$API_ID" "Http5xx" "API"
+          require_metric "$API_ID" "HttpResponseTime" "API"
+          require_metric "$PLAN_ID" "CpuPercentage" "App Service plan"
+          require_metric "$PLAN_ID" "MemoryPercentage" "App Service plan"
+
+          echo "Azure Monitor metric validation passed."
+
+      - name: Preview alert plan
+        shell: bash
+        run: |
+          {
+            echo "## Market Forecaster Azure Monitor alert plan"
+            echo ""
+            echo "Validated metrics:"
+            echo "- UI Http5xx"
+            echo "- UI HttpResponseTime"
+            echo "- API Http5xx"
+            echo "- API HttpResponseTime"
+            echo "- App Service plan CpuPercentage"
+            echo "- App Service plan MemoryPercentage"
+            echo ""
+            echo "Proposed thresholds:"
+            echo "- UI 5xx: total > 5 over 5 minutes"
+            echo "- API 5xx: total > 3 over 5 minutes"
+            echo "- UI response time: average > 5 seconds over 5 minutes"
+            echo "- API response time: average > 3 seconds over 5 minutes"
+            echo "- Plan CPU: average > 85% over 10 minutes"
+            echo "- Plan memory: average > 85% over 10 minutes"
+            echo ""
+            echo "Push runs validate only. A manual run with apply=true is required to create or update alert resources."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require alert notification email
+        if: github.event_name == 'workflow_dispatch' && inputs.apply
+        shell: bash
+        env:
+          ALERT_EMAIL: ${{ secrets.MARKET_FORECASTER_AZURE_ALERT_EMAIL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ALERT_EMAIL:-}" ]; then
+            echo "::error::Repository secret MARKET_FORECASTER_AZURE_ALERT_EMAIL is required when apply=true."
+            exit 1
+          fi
+
+          echo "::add-mask::$ALERT_EMAIL"
+          echo "ALERT_EMAIL=$ALERT_EMAIL" >> "$GITHUB_ENV"
+
+      - name: Create or update Azure Monitor alerts
+        if: github.event_name == 'workflow_dispatch' && inputs.apply
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACTION_GROUP="marketforecaster-ops"
+          RECEIVER_NAME="MarketForecasterOps"
+
+          az monitor action-group create             --resource-group "$RESOURCE_GROUP"             --name "$ACTION_GROUP"             --short-name "MFOPS"             --action email "$RECEIVER_NAME" "$ALERT_EMAIL" usecommonalertschema             --only-show-errors             --output none
+
+          ACTION_GROUP_ID="$(az monitor action-group show             --resource-group "$RESOURCE_GROUP"             --name "$ACTION_GROUP"             --query id -o tsv)"
+
+          if [ -z "$ACTION_GROUP_ID" ]; then
+            echo "::error::Azure Monitor action group was not created."
+            exit 1
+          fi
+
+          create_metric_alert() {
+            local name="$1"
+            local scope="$2"
+            local condition="$3"
+            local window="$4"
+            local severity="$5"
+            local description="$6"
+
+            az monitor metrics alert create               --resource-group "$RESOURCE_GROUP"               --name "$name"               --scopes "$scope"               --condition "$condition"               --window-size "$window"               --evaluation-frequency "1m"               --severity "$severity"               --action "$ACTION_GROUP_ID"               --description "$description"               --tags application=marketforecaster managed-by=github-actions               --only-show-errors               --output none
+          }
+
+          create_metric_alert             "marketforecaster-ui-5xx"             "$UI_ID"             "total Http5xx > 5"             "5m"             "1"             "Market Forecaster UI returned more than five HTTP 5xx responses in five minutes."
+
+          create_metric_alert             "marketforecaster-api-5xx"             "$API_ID"             "total Http5xx > 3"             "5m"             "1"             "Market Forecaster Pro API returned more than three HTTP 5xx responses in five minutes."
+
+          create_metric_alert             "marketforecaster-ui-latency"             "$UI_ID"             "avg HttpResponseTime > 5"             "5m"             "2"             "Market Forecaster UI average response time exceeded five seconds."
+
+          create_metric_alert             "marketforecaster-api-latency"             "$API_ID"             "avg HttpResponseTime > 3"             "5m"             "2"             "Market Forecaster Pro API average response time exceeded three seconds."
+
+          create_metric_alert             "marketforecaster-plan-cpu"             "$PLAN_ID"             "avg CpuPercentage > 85"             "10m"             "2"             "Market Forecaster App Service plan average CPU exceeded 85 percent."
+
+          create_metric_alert             "marketforecaster-plan-memory"             "$PLAN_ID"             "avg MemoryPercentage > 85"             "10m"             "2"             "Market Forecaster App Service plan average memory exceeded 85 percent."
+
+          echo "ACTION_GROUP_ID=$ACTION_GROUP_ID" >> "$GITHUB_ENV"
+
+      - name: Verify configured Azure Monitor alerts
+        if: github.event_name == 'workflow_dispatch' && inputs.apply
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected=(
+            marketforecaster-ui-5xx
+            marketforecaster-api-5xx
+            marketforecaster-ui-latency
+            marketforecaster-api-latency
+            marketforecaster-plan-cpu
+            marketforecaster-plan-memory
+          )
+
+          for alert in "${expected[@]}"; do
+            enabled="$(az monitor metrics alert show               --resource-group "$RESOURCE_GROUP"               --name "$alert"               --query enabled -o tsv)"
+            if [ "$enabled" != "true" ]; then
+              echo "::error::Azure Monitor alert '$alert' is not enabled."
+              exit 1
+            fi
+          done
+
+          {
+            echo ""
+            echo "### Provisioning result"
+            echo "- Email action group: configured"
+            echo "- Enabled metric alerts: 6"
+            echo "- UI/API 5xx alerts: enabled"
+            echo "- UI/API latency alerts: enabled"
+            echo "- App Service plan CPU/memory alerts: enabled"
+          } >> "$GITHUB_STEP_SUMMARY"
