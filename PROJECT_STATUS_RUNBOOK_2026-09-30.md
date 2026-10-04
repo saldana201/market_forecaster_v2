@@ -1,6 +1,6 @@
 # Market Forecaster — Project Status Runbook
 
-Status date: 2026-10-02 (America/Chicago)
+Status date: 2026-10-04 (America/Chicago)
 
 This document is the current launch-status checklist for Market Forecaster. It separates completed work from remaining release work and post-launch expansion.
 
@@ -16,9 +16,9 @@ Current state:
   - Pro: USD 39.99/month
 - The remaining launch work is concentrated in:
   - production security / backup hardening
-  - Azure metric and notification alerts
+  - activating the prepared Azure metric/email notification alerts
   - final Standard-plan API denial check
-  - Demo fallback launch verification
+  - backup/restore posture
   - live Stripe cutover
 
 The product is test-mode billing capable, but it is not yet ready for public live billing/API launch.
@@ -270,10 +270,12 @@ Still recommended:
 
 - [x] Hourly secretless GitHub production smoke monitor for the custom-domain UI and dedicated API health/readiness.
 - [x] Hourly verification of Pro customer-key authorization, usage metering, 1,000-request allowance, and shared API rate limiting.
-- [ ] Azure 5xx-rate alert.
-- [ ] API response-latency alert.
-- [ ] CPU alert.
-- [ ] Memory alert.
+- [x] Azure Monitor alert workflow prepared and validated without creating billable alert resources automatically.
+- [ ] Activate Azure email action group and six metric alerts after configuring the notification-email repository secret.
+- [ ] Azure 5xx-rate alert active.
+- [ ] API response-latency alert active.
+- [ ] CPU alert active.
+- [ ] Memory alert active.
 - [ ] App restart/container-start-failure alert.
 - [ ] Failed-deployment notification.
 - [ ] API quota exhaustion visibility.
@@ -293,11 +295,12 @@ Status: CORE OBSERVABILITY + HOURLY PUBLIC SMOKE MONITOR IMPLEMENTED; AZURE METR
 
 Before final launch:
 
-- [ ] Run shared Demo refresh manually once.
-- [ ] Confirm all 14 Demo contracts exist and are READY.
-- [ ] Confirm shared-store outage falls back to deployment-local contracts.
+- [x] Scheduled shared Demo refresh completed successfully.
+- [x] Confirmed all 14 Demo contracts exist and are READY in Supabase.
+- [x] Automated shared-store outage regression confirms fallback to deployment-local contracts.
+- [ ] Optional destructive live-outage simulation intentionally not performed against production.
 
-Status: IMPLEMENTED; final launch verification remains.
+Status: DEMO CONTRACT AVAILABILITY + FALLBACK REGRESSION VERIFIED.
 
 ## 12. Latest repository status
 
@@ -335,8 +338,8 @@ The project should not be called production-complete until every item below is c
 - [ ] Supabase leaked-password protection decision addressed. Current Supabase organization is on the Free plan; leaked-password protection is available on Pro and above, so enabling it requires a plan upgrade.
 - [ ] Backup plan confirmed. Current Supabase organization is on the Free plan, which does not include the Pro daily-backup retention described by Supabase; choose either a Supabase plan upgrade or a documented off-site logical-backup process before paid launch.
 - [ ] Restore drill completed.
-- [ ] Core Azure operational alerts configured.
-- [ ] Demo contract refresh / fallback launch check completed.
+- [ ] Core Azure operational alerts activated. Provisioning workflow is prepared; notification email + manual apply remain.
+- [x] Demo contract refresh / fallback launch check completed through live contract verification plus automated fallback regression.
 - [x] Automated post-deploy production readiness --strict passes.
 - [x] Automated post-deploy production readiness --strict --require-billing passes.
 - [ ] Live Stripe products/prices/webhook configured.
@@ -363,6 +366,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Merge the stronger application password policy and verify signup/password-change UX.
-2. Decide the Supabase production posture: upgrade for leaked-password protection and platform backups, or stay Free temporarily and implement a documented off-site logical-backup process.
-3. Configure Azure metric/notification alerts, verify Standard cannot authorize customer API calls, and finish the live Stripe cutover checklist.
+1. Configure the Azure alert-notification email secret and manually activate the prepared Azure Monitor alert rules.
+2. Complete the Standard-plan customer API denial regression without disturbing either active Pro test account.
+3. Decide the Supabase backup/security production posture, then complete the live Stripe cutover checklist.
