@@ -25,19 +25,28 @@ def test_local_restore_drill_decrypts_and_verifies_backup():
     assert "MARKET_FORECASTER_BACKUP_PASSPHRASE" in text
     assert "sha256sum --check SHA256SUMS" in text
     assert "Decrypt and verify backup" in text
+    assert "roles.sql" in text
 
 
-def test_local_restore_drill_restores_full_logical_backup():
+def test_local_restore_drill_uses_seeded_platform_roles():
+    text = _text()
+
+    assert "production roles.sql remains checksum-verified but is not replayed locally" in text
+    assert "--file restored-files/roles.sql" not in text
+    assert "roles.local.sql" not in text
+    assert "Prepare roles for disposable local restore" not in text
+
+
+def test_local_restore_drill_restores_application_backup():
     text = _text()
 
     for file_name in (
-        "roles.sql",
         "schema.sql",
         "data.sql",
         "history_schema.sql",
         "history_data.sql",
     ):
-        assert file_name in text
+        assert f"--file restored-files/{file_name}" in text
 
     assert "SET session_replication_role = replica" in text
 
@@ -63,44 +72,3 @@ def test_local_restore_drill_records_measured_restore_time():
 
     assert "RESTORE_RTO_SECONDS" in text
     assert "Measured restore verification time" in text
-
-
-
-def test_local_restore_drill_filters_server_level_role_settings():
-    text = _text()
-
-    assert "Prepare roles for disposable local restore" in text
-    assert "roles.local.sql" in text
-    assert "market_forecaster.scripts.prepare_local_restore_roles" in text
-    assert "--file restored-files/roles.local.sql" in text
-
-
-
-def test_prepare_local_roles_filters_multiline_role_settings(tmp_path):
-    from market_forecaster.scripts.prepare_local_restore_roles import prepare_local_roles
-
-    source = tmp_path / "roles.sql"
-    target = tmp_path / "roles.local.sql"
-    source.write_text(
-        """ALTER ROLE postgres SET
-    log_min_messages TO 'fatal';
-ALTER ROLE authenticator SET statement_timeout TO '8s';
-ALTER ROLE postgres WITH LOGIN;
-""",
-        encoding="utf-8",
-    )
-
-    skipped = prepare_local_roles(source, target)
-    result = target.read_text(encoding="utf-8")
-
-    assert skipped == 2
-    assert "log_min_messages" not in result
-    assert "statement_timeout" not in result
-    assert "ALTER ROLE postgres WITH LOGIN;" in result
-
-
-def test_local_restore_workflow_uses_tested_role_filter_helper():
-    text = _text()
-
-    assert "market_forecaster.scripts.prepare_local_restore_roles" in text
-    assert "restored-files/roles.local.sql" in text
