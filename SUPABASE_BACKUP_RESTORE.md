@@ -168,3 +168,22 @@ smaller RPO and the added cost is justified.
 
 The GitHub logical backup should remain useful even after upgrading because it is
 off-platform and independently encrypted.
+
+
+## Disposable local restore compatibility
+
+The local Supabase stack already owns its platform role defaults. A production
+`roles.sql` dump can contain server-level role settings such as
+`ALTER ROLE ... SET log_min_messages` that the local restore connection is not
+allowed to change.
+
+For the **disposable local restore drill only**, the workflow creates
+`roles.local.sql` from the verified backup and comments out `ALTER ROLE ... SET`
+statements before restore. It still restores role attributes/memberships that are
+accepted by the local stack, followed by the full application schema, data,
+migration history, Auth data, subscriptions, API-key records, and Forecast
+Contracts.
+
+The encrypted backup artifact itself is never modified. A hosted disaster
+recovery should continue to use the original Supabase CLI dump and follow the
+target platform's role-restore requirements.
