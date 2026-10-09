@@ -55,6 +55,42 @@ jobs:
           echo "::add-mask::$SUPABASE_DB_URL"
           echo "::add-mask::$BACKUP_PASSPHRASE"
 
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          expected_ref = "pbttpkbkimqdoilmwryi"
+          raw = os.environ["SUPABASE_DB_URL"]
+          parsed = urlparse(raw)
+
+          if parsed.scheme not in {"postgresql", "postgres"}:
+              raise SystemExit(
+                  "MARKET_FORECASTER_SUPABASE_DB_URL must be a Postgres connection string."
+              )
+
+          if not parsed.hostname:
+              raise SystemExit(
+                  "MARKET_FORECASTER_SUPABASE_DB_URL is missing a database hostname."
+              )
+
+          if parsed.hostname.endswith("pooler.supabase.com"):
+              expected_user = f"postgres.{expected_ref}"
+              if parsed.username != expected_user:
+                  raise SystemExit(
+                      "For a Supabase Session Pooler URL, the username must be "
+                      f"{expected_user}. Copy the Session Pooler string from "
+                      "Supabase -> Connect rather than using plain postgres."
+                  )
+
+          if expected_ref not in raw and not parsed.hostname.startswith(f"db.{expected_ref}."):
+              raise SystemExit(
+                  "The configured database URL does not appear to belong to the "
+                  "Market Forecaster Supabase project."
+              )
+
+          print("Supabase database URL preflight passed.")
+          PY
+
       - name: Verify backup tooling
         shell: bash
         run: |
