@@ -93,6 +93,7 @@ def test_backup_workflow_validates_session_pooler_username():
     text = _backup_text()
 
     assert "pooler.supabase.com" in text
-    assert "postgres.pbttpkbkimqdoilmwryi" in text
+    assert 'expected_ref = "pbttpkbkimqdoilmwryi"' in text
+    assert 'expected_user = f"postgres.{expected_ref}"' in text
     assert "Copy the Session Pooler string from" in text
     assert "Supabase database URL preflight passed." in text
