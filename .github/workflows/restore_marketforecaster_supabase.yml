@@ -1,0 +1,131 @@
+name: Validate or restore Market Forecaster Supabase backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: 'GitHub Actions run ID from Backup Market Forecaster Supabase'
+        required: true
+        type: string
+      apply_restore:
+        description: 'Restore into the configured non-production target database'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: marketforecaster-supabase-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_PASSPHRASE: ${{ secrets.MARKET_FORECASTER_BACKUP_PASSPHRASE }}
+      RESTORE_DB_URL: ${{ secrets.MARKET_FORECASTER_SUPABASE_RESTORE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require backup passphrase
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo '::error::Repository secret MARKET_FORECASTER_BACKUP_PASSPHRASE is required.'
+            exit 1
+          fi
+          echo "::add-mask::$BACKUP_PASSPHRASE"
+
+      - name: Download encrypted backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: marketforecaster-supabase-backup
+          run-id: ${{ inputs.backup_run_id }}
+          github-token: ${{ github.token }}
+          path: encrypted-backup
+
+      - name: Decrypt and verify backup integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          encrypted="$(find encrypted-backup -maxdepth 1 -type f -name '*.tar.gz.gpg' -print -quit)"
+          if [ -z "$encrypted" ]; then
+            echo '::error::Encrypted backup artifact was not found.'
+            exit 1
+          fi
+          mkdir -p restored-files
+          archive='restored-files/backup.tar.gz'
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --decrypt --output "$archive" "$encrypted"
+          tar -C restored-files -xzf "$archive"
+          rm -f "$archive"
+          (cd restored-files && sha256sum --check SHA256SUMS)
+          for required in roles.sql schema.sql data.sql history_schema.sql history_data.sql manifest.txt; do
+            test -s "restored-files/$required"
+          done
+          echo 'Encrypted backup decrypted and all checksums passed.'
+
+      - name: Require non-production restore target
+        if: inputs.apply_restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RESTORE_DB_URL:-}" ]; then
+            echo '::error::Repository secret MARKET_FORECASTER_SUPABASE_RESTORE_DB_URL is required when apply_restore=true.'
+            exit 1
+          fi
+          echo "::add-mask::$RESTORE_DB_URL"
+          if [[ "$RESTORE_DB_URL" == *'pbttpkbkimqdoilmwryi'* ]]; then
+            echo '::error::Restore target appears to reference the production Supabase project. Refusing destructive restore.'
+            exit 1
+          fi
+
+      - name: Restore into non-production Supabase target
+        if: inputs.apply_restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql --single-transaction --variable ON_ERROR_STOP=1 --file restored-files/roles.sql --file restored-files/schema.sql --command 'SET session_replication_role = replica' --file restored-files/data.sql --file restored-files/history_schema.sql --file restored-files/history_data.sql --dbname "$RESTORE_DB_URL"
+
+      - name: Verify restored Market Forecaster structures
+        if: inputs.apply_restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(psql "$RESTORE_DB_URL" -Atc "select concat_ws(',',to_regclass('public.subscriptions'),to_regclass('public.user_api_keys'),to_regclass('public.shared_forecast_contracts'),to_regclass('auth.users'));")"
+          for expected in subscriptions user_api_keys shared_forecast_contracts users; do
+            if [[ "$result" != *"$expected"* ]]; then
+              echo "::error::Restore verification did not find expected structure: $expected"
+              exit 1
+            fi
+          done
+          echo 'Non-production restore verification passed.'
+
+      - name: Remove decrypted SQL
+        if: always()
+        shell: bash
+        run: |
+          rm -rf restored-files encrypted-backup
+          unset BACKUP_PASSPHRASE RESTORE_DB_URL
+
+      - name: Write restore-drill summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Market Forecaster Supabase restore drill'
+            echo ''
+            echo '- Backup run: ${{ inputs.backup_run_id }}'
+            echo '- Decryption: passed'
+            echo '- SHA-256 integrity validation: passed'
+            if [ '${{ inputs.apply_restore }}' = 'true' ]; then
+              echo '- Non-production database restore: passed'
+              echo '- Core Market Forecaster/Auth structures: verified'
+            else
+              echo '- Database restore: not requested (integrity validation only)'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
