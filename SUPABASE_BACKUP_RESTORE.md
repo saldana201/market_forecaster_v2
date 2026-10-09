@@ -172,18 +172,17 @@ off-platform and independently encrypted.
 
 ## Disposable local restore compatibility
 
-The local Supabase stack already owns its platform role defaults. A production
-`roles.sql` dump can contain server-level role settings such as
-`ALTER ROLE ... SET log_min_messages` that the local restore connection is not
-allowed to change.
+The disposable Supabase stack already seeds the platform roles required by Auth,
+PostgREST, Storage, and the local database. A hosted-production `roles.sql` dump
+can contain server-level role settings that are intentionally managed by the
+Supabase platform and are not portable into the local control plane.
 
-For the **disposable local restore drill only**, the workflow creates
-`roles.local.sql` from the verified backup and comments out `ALTER ROLE ... SET`
-statements before restore. It still restores role attributes/memberships that are
-accepted by the local stack, followed by the full application schema, data,
-migration history, Auth data, subscriptions, API-key records, and Forecast
-Contracts.
+For the **disposable local restore drill only**, `roles.sql` is still decrypted,
+present, and SHA-256 verified as part of the backup, but it is not replayed into
+the local stack. The drill restores the application schema, application/Auth data,
+and migration history on top of the local stack's seeded Supabase roles, then
+verifies Auth users, subscriptions, API-key records, and READY Forecast Contracts.
 
 The encrypted backup artifact itself is never modified. A hosted disaster
 recovery should continue to use the original Supabase CLI dump and follow the
-target platform's role-restore requirements.
+target Supabase environment's role-restore requirements.

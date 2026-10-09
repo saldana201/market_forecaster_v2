@@ -20,10 +20,8 @@ jobs:
   restore:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     env:
       BACKUP_PASSPHRASE: ${{ secrets.MARKET_FORECASTER_BACKUP_PASSPHRASE }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -64,6 +62,10 @@ jobs:
           tar -C restored-files -xzf "$archive"
           rm -f "$archive"
           (cd restored-files && sha256sum --check SHA256SUMS)
+          for required in roles.sql schema.sql data.sql history_schema.sql history_data.sql; do
+            test -s "restored-files/$required"
+          done
+          echo 'Backup decryption and checksum verification passed.'
 
       - name: Start disposable local Supabase stack
         shell: bash
@@ -85,19 +87,20 @@ jobs:
           echo "LOCAL_RESTORE_DB_URL=$DB_URL" >> "$GITHUB_ENV"
           date +%s > restore-lab/restore_started_epoch
 
-      - name: Prepare roles for disposable local restore
+      - name: Restore application backup into disposable local Supabase
         shell: bash
         run: |
           set -euo pipefail
-          python -m market_forecaster.scripts.prepare_local_restore_roles \
-            restored-files/roles.sql \
-            restored-files/roles.local.sql
-
-      - name: Restore encrypted production backup into disposable local Supabase
-        shell: bash
-        run: |
-          set -euo pipefail
-          psql --single-transaction --variable ON_ERROR_STOP=1 --file restored-files/roles.local.sql --file restored-files/schema.sql --command 'SET session_replication_role = replica' --file restored-files/data.sql --file restored-files/history_schema.sql --file restored-files/history_data.sql --dbname "$LOCAL_RESTORE_DB_URL"
+          echo 'Using the local Supabase stack platform roles; production roles.sql remains checksum-verified but is not replayed locally.'
+          psql \
+            --single-transaction \
+            --variable ON_ERROR_STOP=1 \
+            --file restored-files/schema.sql \
+            --command 'SET session_replication_role = replica' \
+            --file restored-files/data.sql \
+            --file restored-files/history_schema.sql \
+            --file restored-files/history_data.sql \
+            --dbname "$LOCAL_RESTORE_DB_URL"
 
       - name: Verify restored Market Forecaster data
         shell: bash
@@ -148,8 +151,9 @@ jobs:
             echo ''
             echo '- Backup run: ${{ inputs.backup_run_id }}'
             echo '- Backup decryption + SHA-256 validation: passed'
+            echo '- Production roles.sql: checksum-verified; disposable stack platform roles used instead'
             echo '- Disposable local Supabase startup: passed'
-            echo '- Full SQL restore: passed'
+            echo '- Application schema/data/migration restore: passed'
             echo "- Auth users restored: $RESTORED_AUTH_USERS"
             echo "- Subscriptions restored: $RESTORED_SUBSCRIPTIONS"
             echo "- API keys restored: $RESTORED_API_KEYS"
