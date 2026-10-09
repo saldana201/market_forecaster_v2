@@ -383,3 +383,62 @@ def test_customer_api_key_table_has_explicit_browser_deny_policy():
     assert "to anon, authenticated" in sql
     assert "using (false)" in sql
     assert "with check (false)" in sql
+
+
+
+def test_standard_customer_api_key_rejection_does_not_touch_usage_or_last_used(monkeypatch):
+    monkeypatch.setattr(api_keys, "SUBSCRIPTIONS_ENABLED", True)
+    calls = []
+
+    def fake_request(table, **kwargs):
+        calls.append((table, kwargs))
+        if table == "user_api_keys" and kwargs.get("method", "GET") == "GET":
+            return [
+                {
+                    "id": "key-standard",
+                    "user_id": USER_ID,
+                    "key_prefix": "mfk_standardtest",
+                    "revoked_at": None,
+                }
+            ]
+        if table == "subscriptions":
+            return [{"plan": "standard", "status": "active"}]
+        return []
+
+    monkeypatch.setattr(api_keys, "_request_rows", fake_request)
+
+    with pytest.raises(InvalidCustomerAPIKey, match="Active Pro subscription"):
+        validate_customer_api_key("mfk_" + "s" * 40)
+
+    assert not any(
+        table == "user_api_keys" and kwargs.get("method") == "PATCH"
+        for table, kwargs in calls
+    )
+
+
+def test_standard_customer_key_denial_never_consumes_monthly_quota(monkeypatch):
+    monkeypatch.setattr(security, "load_settings", lambda: _Settings())
+
+    def reject_standard(_value):
+        raise InvalidCustomerAPIKey(
+            "Active Pro subscription is required for API access."
+        )
+
+    monkeypatch.setattr(security, "validate_customer_api_key", reject_standard)
+
+    def fail_if_metered(*args, **kwargs):
+        pytest.fail("Standard-plan API denial must happen before usage metering")
+
+    monkeypatch.setattr(
+        security,
+        "consume_customer_api_request",
+        fail_if_metered,
+    )
+
+    response = _security_client().get(
+        "/protected",
+        headers={"X-API-Key": "mfk_" + "s" * 40},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or inactive API key"
