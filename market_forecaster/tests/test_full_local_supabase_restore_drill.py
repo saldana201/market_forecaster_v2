@@ -104,3 +104,28 @@ def test_local_restore_workflow_uses_tested_role_filter_helper():
 
     assert "market_forecaster.scripts.prepare_local_restore_roles" in text
     assert "restored-files/roles.local.sql" in text
+
+
+
+def test_prepare_local_roles_allows_log_min_messages_in_comments(tmp_path):
+    from market_forecaster.scripts.prepare_local_restore_roles import prepare_local_roles
+
+    source = tmp_path / "roles.sql"
+    target = tmp_path / "roles.local.sql"
+    source.write_text(
+        """-- Hosted Supabase role defaults include log_min_messages.
+ALTER ROLE postgres
+    IN DATABASE postgres
+    SET log_min_messages TO 'fatal';
+ALTER ROLE postgres WITH LOGIN;
+""",
+        encoding="utf-8",
+    )
+
+    skipped = prepare_local_roles(source, target)
+    result = target.read_text(encoding="utf-8")
+
+    assert skipped == 1
+    assert "-- Hosted Supabase role defaults include log_min_messages." in result
+    assert "SET log_min_messages" not in result
+    assert "ALTER ROLE postgres WITH LOGIN;" in result
