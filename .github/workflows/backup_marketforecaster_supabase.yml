@@ -1,0 +1,121 @@
+name: Backup Market Forecaster Supabase
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/backup_marketforecaster_supabase.yml'
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketforecaster-supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate backup workflow is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/backup_marketforecaster_supabase.yml
+          echo 'Backup workflow validation passed. Scheduled/manual runs create encrypted backups only.'
+
+  backup:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.MARKET_FORECASTER_SUPABASE_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.MARKET_FORECASTER_BACKUP_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require backup credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo '::error::Repository secret MARKET_FORECASTER_SUPABASE_DB_URL is required.'
+            exit 1
+          fi
+          if [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo '::error::Repository secret MARKET_FORECASTER_BACKUP_PASSPHRASE is required.'
+            exit 1
+          fi
+          echo "::add-mask::$SUPABASE_DB_URL"
+          echo "::add-mask::$BACKUP_PASSPHRASE"
+
+      - name: Verify backup tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --version
+          npx --yes supabase@latest --version
+          gpg --version | head -n 1
+
+      - name: Create Supabase logical backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          stamp="$(date -u +'%Y%m%dT%H%M%SZ')"
+          echo "BACKUP_STAMP=$stamp" >> "$GITHUB_ENV"
+          npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" --file backup/roles.sql --role-only
+          npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" --file backup/schema.sql
+          npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" --file backup/data.sql --use-copy --data-only -x "storage.buckets_vectors" -x "storage.vector_indexes"
+          npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" --file backup/history_schema.sql --schema supabase_migrations
+          npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" --file backup/history_data.sql --use-copy --data-only --schema supabase_migrations
+          {
+            echo "created_utc=$stamp"
+            echo 'project_ref=pbttpkbkimqdoilmwryi'
+            echo 'format=supabase-cli-logical'
+            echo 'files=roles.sql,schema.sql,data.sql,history_schema.sql,history_data.sql'
+            echo 'restore_reference=SUPABASE_BACKUP_RESTORE.md'
+          } > backup/manifest.txt
+          (cd backup && sha256sum roles.sql schema.sql data.sql history_schema.sql history_data.sql > SHA256SUMS)
+
+      - name: Encrypt backup before artifact upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="marketforecaster-supabase-${BACKUP_STAMP}.tar.gz"
+          encrypted="${archive}.gpg"
+          tar -C backup -czf "$archive" roles.sql schema.sql data.sql history_schema.sql history_data.sql manifest.txt SHA256SUMS
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 --output "$encrypted" "$archive"
+          rm -rf backup "$archive"
+          unset SUPABASE_DB_URL BACKUP_PASSPHRASE
+          test -s "$encrypted"
+          echo "ENCRYPTED_BACKUP=$encrypted" >> "$GITHUB_ENV"
+
+      - name: Upload encrypted off-site backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketforecaster-supabase-backup
+          path: ${{ env.ENCRYPTED_BACKUP }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Write backup summary
+        shell: bash
+        run: |
+          {
+            echo '## Market Forecaster Supabase backup'
+            echo ''
+            echo "- Created UTC: $BACKUP_STAMP"
+            echo '- Format: Supabase CLI logical dump'
+            echo '- Includes roles, schema, data, migration history, and Auth database data supported by the CLI dump'
+            echo '- Artifact encryption: AES-256 symmetric GPG'
+            echo '- GitHub artifact retention: 30 days'
+            echo '- Plaintext SQL files were removed before artifact upload'
+          } >> "$GITHUB_STEP_SUMMARY"
