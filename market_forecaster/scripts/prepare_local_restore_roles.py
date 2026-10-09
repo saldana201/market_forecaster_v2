@@ -28,11 +28,6 @@ def prepare_local_roles(source: Path, target: Path) -> int:
             "Server-level ALTER ROLE ... SET statement remained after local filtering."
         )
 
-    if re.search(r"(?i)\blog_min_messages\b", filtered):
-        raise RuntimeError(
-            "log_min_messages remained in the local roles file after filtering."
-        )
-
     target.write_text(filtered, encoding="utf-8")
     return len(matches)
 
