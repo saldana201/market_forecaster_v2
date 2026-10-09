@@ -86,3 +86,13 @@ def test_restore_workflow_verifies_core_market_forecaster_structures():
         "auth.users",
     ):
         assert relation in text
+
+
+
+def test_backup_workflow_validates_session_pooler_username():
+    text = _backup_text()
+
+    assert "pooler.supabase.com" in text
+    assert "postgres.pbttpkbkimqdoilmwryi" in text
+    assert "Copy the Session Pooler string from" in text
+    assert "Supabase database URL preflight passed." in text
