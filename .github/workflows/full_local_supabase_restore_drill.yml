@@ -85,11 +85,39 @@ jobs:
           echo "LOCAL_RESTORE_DB_URL=$DB_URL" >> "$GITHUB_ENV"
           date +%s > restore-lab/restore_started_epoch
 
+      - name: Prepare roles for disposable local restore
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          source = Path("restored-files/roles.sql")
+          target = Path("restored-files/roles.local.sql")
+          skipped = 0
+          output = []
+
+          for line in source.read_text(encoding="utf-8").splitlines():
+              if re.match(r'^ALTER ROLE\s+.+\s+SET\s+', line, flags=re.IGNORECASE):
+                  output.append(
+                      "-- skipped in disposable local restore because the local "
+                      "Supabase stack owns server-level role settings: " + line
+                  )
+                  skipped += 1
+              else:
+                  output.append(line)
+
+          target.write_text("\n".join(output) + "\n", encoding="utf-8")
+          print(f"Prepared local roles file; skipped {skipped} server-level role setting statements.")
+          PY
+
       - name: Restore encrypted production backup into disposable local Supabase
         shell: bash
         run: |
           set -euo pipefail
-          psql --single-transaction --variable ON_ERROR_STOP=1 --file restored-files/roles.sql --file restored-files/schema.sql --command 'SET session_replication_role = replica' --file restored-files/data.sql --file restored-files/history_schema.sql --file restored-files/history_data.sql --dbname "$LOCAL_RESTORE_DB_URL"
+          psql --single-transaction --variable ON_ERROR_STOP=1 --file restored-files/roles.local.sql --file restored-files/schema.sql --command 'SET session_replication_role = replica' --file restored-files/data.sql --file restored-files/history_schema.sql --file restored-files/history_data.sql --dbname "$LOCAL_RESTORE_DB_URL"
 
       - name: Verify restored Market Forecaster data
         shell: bash
