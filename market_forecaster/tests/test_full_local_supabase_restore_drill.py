@@ -63,3 +63,14 @@ def test_local_restore_drill_records_measured_restore_time():
 
     assert "RESTORE_RTO_SECONDS" in text
     assert "Measured restore verification time" in text
+
+
+
+def test_local_restore_drill_filters_server_level_role_settings():
+    text = _text()
+
+    assert "Prepare roles for disposable local restore" in text
+    assert "roles.local.sql" in text
+    assert "ALTER ROLE" in text
+    assert "server-level role setting statements" in text
+    assert "--file restored-files/roles.local.sql" in text
