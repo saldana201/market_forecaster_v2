@@ -71,8 +71,7 @@ def test_local_restore_drill_filters_server_level_role_settings():
 
     assert "Prepare roles for disposable local restore" in text
     assert "roles.local.sql" in text
-    assert "ALTER ROLE" in text
-    assert "server-level role setting statements" in text
+    assert "market_forecaster.scripts.prepare_local_restore_roles" in text
     assert "--file restored-files/roles.local.sql" in text
 
 
