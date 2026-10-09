@@ -1,6 +1,6 @@
 # Market Forecaster — Project Status Runbook
 
-Status date: 2026-10-04 (America/Chicago)
+Status date: 2026-10-09 (America/Chicago)
 
 This document is the current launch-status checklist for Market Forecaster. It separates completed work from remaining release work and post-launch expansion.
 
@@ -16,9 +16,9 @@ Current state:
   - Pro: USD 39.99/month
 - The remaining launch work is concentrated in:
   - production security / backup hardening
-  - activating the prepared Azure metric/email notification alerts
-  - final Standard-plan API denial check
-  - backup/restore posture
+  - activating and operating the encrypted Supabase logical-backup workflow
+  - completing a non-production restore drill
+  - provider-side leaked-password protection / Supabase plan decision
   - live Stripe cutover
 
 The product is test-mode billing capable, but it is not yet ready for public live billing/API launch.
@@ -236,9 +236,14 @@ Completed live API acceptance:
 Remaining:
 - [ ] Confirm Account -> API Access displays the same current usage count after the latest deployment.
 - [x] API launch quota reconciled back to 1,000 and verified through `/api/v1/ready`.
-- [ ] Verify Standard plan cannot authorize customer API requests.
+- [x] Automated Standard-plan API denial regression confirms an active Standard
+  subscription cannot authorize a customer API key and denial occurs before
+  monthly usage is consumed.
+- [ ] Optional live Standard-account API denial check deferred because the
+  current subscription table contains only active Pro test accounts; do not
+  downgrade either active Pro account solely for this test.
 
-Status: CORE PRO API ACCEPTANCE PASSED; THREE FINAL REGRESSION CHECKS REMAIN.
+Status: CORE PRO API ACCEPTANCE PASSED; STANDARD DENIAL IS AUTOMATED AND LIVE TEST IS DEFERRED SAFELY.
 
 ## 9. Production data / backup readiness
 
@@ -246,14 +251,30 @@ Status: CORE PRO API ACCEPTANCE PASSED; THREE FINAL REGRESSION CHECKS REMAIN.
 - [x] Subscription authority stored in Supabase.
 - [x] Forecast contracts / shared authority architecture implemented.
 
+Completed backup design:
+- [x] Confirmed current Supabase Free-plan posture requires an application-owned
+  logical backup process rather than relying on paid-plan daily backups.
+- [x] Encrypted daily Supabase CLI logical-backup workflow implemented.
+- [x] Backup includes roles, schema, data, migration history, and supported Auth
+  database data.
+- [x] Backup generates SHA-256 checksums and removes plaintext before artifact upload.
+- [x] 30-day encrypted GitHub artifact retention configured.
+- [x] Restore owner and recovery procedure documented in `SUPABASE_BACKUP_RESTORE.md`.
+- [x] Initial operating targets documented: RPO <= 24 hours and target RTO 4 hours
+  until measured by a full restore drill.
+- [x] Manual restore/integrity workflow implemented with explicit production-project protection.
+
 Still required before public paid launch:
+- [ ] Configure `MARKET_FORECASTER_SUPABASE_DB_URL` repository secret.
+- [ ] Configure `MARKET_FORECASTER_BACKUP_PASSPHRASE` and retain an external recovery copy.
+- [ ] Run the first encrypted production logical backup.
+- [ ] Run integrity-only restore validation against that backup artifact.
+- [ ] Configure a disposable/non-production restore database and
+  `MARKET_FORECASTER_SUPABASE_RESTORE_DB_URL`.
+- [ ] Perform one full non-production restore drill and record measured RTO.
+- [ ] Decide whether to upgrade Supabase before public paid launch for provider-managed daily backups and leaked-password protection.
 
-- [ ] Confirm Supabase backup/PITR capability for the selected plan.
-- [ ] Document restore owner and recovery procedure.
-- [ ] Perform at least one non-production restore drill.
-- [ ] Document expected recovery time and recovery point objectives.
-
-Status: PENDING.
+Status: BACKUP/RESTORE AUTOMATION IMPLEMENTED; SECRET ACTIVATION + FULL RESTORE DRILL PENDING.
 
 ## 10. Monitoring and operations
 
@@ -271,18 +292,19 @@ Still recommended:
 - [x] Hourly secretless GitHub production smoke monitor for the custom-domain UI and dedicated API health/readiness.
 - [x] Hourly verification of Pro customer-key authorization, usage metering, 1,000-request allowance, and shared API rate limiting.
 - [x] Azure Monitor alert workflow prepared and validated without creating billable alert resources automatically.
-- [ ] Activate Azure email action group and six metric alerts after configuring the notification-email repository secret.
-- [ ] Azure 5xx-rate alert active.
-- [ ] API response-latency alert active.
-- [ ] CPU alert active.
-- [ ] Memory alert active.
+- [x] Azure email action group activated and verified.
+- [x] Six Azure Monitor metric alerts created and enabled.
+- [x] Azure UI/API 5xx alerts active.
+- [x] UI/API response-latency alerts active.
+- [x] App Service CPU alert active.
+- [x] App Service memory alert active.
 - [ ] App restart/container-start-failure alert.
 - [ ] Failed-deployment notification.
 - [ ] API quota exhaustion visibility.
 - [ ] Subscription webhook failure visibility.
 - [ ] Optional later: Azure Front Door / WAF / API Management when API traffic justifies it.
 
-Status: CORE OBSERVABILITY + HOURLY PUBLIC SMOKE MONITOR IMPLEMENTED; AZURE METRIC/NOTIFICATION ALERTS PENDING.
+Status: CORE OBSERVABILITY + HOURLY PUBLIC SMOKE MONITOR + AZURE METRIC/EMAIL ALERTING ACTIVE.
 
 ## 11. Demo and forecast authority
 
@@ -336,9 +358,10 @@ The project should not be called production-complete until every item below is c
 - [x] Quota exhaustion tested.
 - [x] Automated Stripe Standard/Pro recurring-price catalog validator passes in the strict post-deploy gate.
 - [ ] Supabase leaked-password protection decision addressed. Current Supabase organization is on the Free plan; leaked-password protection is available on Pro and above, so enabling it requires a plan upgrade.
-- [ ] Backup plan confirmed. Current Supabase organization is on the Free plan, which does not include the Pro daily-backup retention described by Supabase; choose either a Supabase plan upgrade or a documented off-site logical-backup process before paid launch.
-- [ ] Restore drill completed.
-- [ ] Core Azure operational alerts activated. Provisioning workflow is prepared; notification email + manual apply remain.
+- [x] Backup plan selected for current Free-plan stage: encrypted daily off-platform logical backup with documented restore procedure.
+- [ ] First encrypted backup + integrity validation completed.
+- [ ] Full non-production restore drill completed.
+- [x] Core Azure operational alerts activated and verified.
 - [x] Demo contract refresh / fallback launch check completed through live contract verification plus automated fallback regression.
 - [x] Automated post-deploy production readiness --strict passes.
 - [x] Automated post-deploy production readiness --strict --require-billing passes.
@@ -366,6 +389,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Configure the Azure alert-notification email secret and manually activate the prepared Azure Monitor alert rules.
-2. Complete the Standard-plan customer API denial regression without disturbing either active Pro test account.
-3. Decide the Supabase backup/security production posture, then complete the live Stripe cutover checklist.
+1. Merge the encrypted Supabase backup/restore automation, configure its two repository secrets, and run the first backup plus integrity validation.
+2. Perform a full non-production restore drill when a disposable Supabase target is available; keep the two active Pro test accounts unchanged because Standard API denial is already regression-tested.
+3. Decide whether to upgrade Supabase for provider-managed backups/leaked-password protection, then complete the live Stripe cutover checklist.
