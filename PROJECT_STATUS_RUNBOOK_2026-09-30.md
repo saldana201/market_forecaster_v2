@@ -361,7 +361,7 @@ The project should not be called production-complete until every item below is c
 - [x] Backup plan selected for current Free-plan stage: encrypted daily off-platform logical backup with documented restore procedure.
 - [x] First encrypted production logical backup completed successfully (workflow run 37965746226).
 - [x] Integrity-only restore validation completed successfully (workflow run 37967481245): decryption passed and all SHA-256 checksums passed.
-- [ ] Full restore drill completed. A cost-free disposable local Supabase workflow is prepared so this can be tested without another hosted project.
+- [ ] Full restore drill completed. First local attempt reached the restore stage but failed on a Supabase platform role setting (`log_min_messages`); compatibility filtering is implemented for the rerun.
 - [x] Core Azure operational alerts activated and verified.
 - [x] Demo contract refresh / fallback launch check completed through live contract verification plus automated fallback regression.
 - [x] Automated post-deploy production readiness --strict passes.
@@ -390,6 +390,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Run the cost-free full local Supabase restore drill against encrypted backup run 37965746226 and record the measured restore time.
+1. Rerun the cost-free full local Supabase restore drill against encrypted backup run 37965746226 after the local-role compatibility fix, then record the measured restore time.
 2. Decide whether to upgrade Supabase for provider-managed backups and leaked-password protection before public paid launch.
 3. Complete the live Stripe cutover checklist and one controlled real subscription acceptance transaction.
