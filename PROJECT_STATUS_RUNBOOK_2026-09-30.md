@@ -359,8 +359,9 @@ The project should not be called production-complete until every item below is c
 - [x] Automated Stripe Standard/Pro recurring-price catalog validator passes in the strict post-deploy gate.
 - [ ] Supabase leaked-password protection decision addressed. Current Supabase organization is on the Free plan; leaked-password protection is available on Pro and above, so enabling it requires a plan upgrade.
 - [x] Backup plan selected for current Free-plan stage: encrypted daily off-platform logical backup with documented restore procedure.
-- [ ] First encrypted backup + integrity validation completed.
-- [ ] Full non-production restore drill completed.
+- [x] First encrypted production logical backup completed successfully (workflow run 37965746226).
+- [x] Integrity-only restore validation completed successfully (workflow run 37967481245): decryption passed and all SHA-256 checksums passed.
+- [ ] Full restore drill completed. A cost-free disposable local Supabase workflow is prepared so this can be tested without another hosted project.
 - [x] Core Azure operational alerts activated and verified.
 - [x] Demo contract refresh / fallback launch check completed through live contract verification plus automated fallback regression.
 - [x] Automated post-deploy production readiness --strict passes.
@@ -389,6 +390,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Merge the encrypted Supabase backup/restore automation, configure its two repository secrets, and run the first backup plus integrity validation.
-2. Perform a full non-production restore drill when a disposable Supabase target is available; keep the two active Pro test accounts unchanged because Standard API denial is already regression-tested.
-3. Decide whether to upgrade Supabase for provider-managed backups/leaked-password protection, then complete the live Stripe cutover checklist.
+1. Run the cost-free full local Supabase restore drill against encrypted backup run 37965746226 and record the measured restore time.
+2. Decide whether to upgrade Supabase for provider-managed backups and leaked-password protection before public paid launch.
+3. Complete the live Stripe cutover checklist and one controlled real subscription acceptance transaction.
