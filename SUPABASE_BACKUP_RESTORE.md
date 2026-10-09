@@ -66,10 +66,17 @@ Configure these in:
 
 ### MARKET_FORECASTER_SUPABASE_DB_URL
 
-Use the Supabase **Connect** panel and copy the database connection string,
-preferably the Session Pooler connection string as recommended by Supabase.
+Use the Supabase **Connect** panel and copy the **Session Pooler** connection
+string as recommended by Supabase.
 
-The secret must include the database password.
+For this project, the pooler username must be:
+
+    postgres.pbttpkbkimqdoilmwryi
+
+Do not use plain `postgres` as the pooler username. The secret must also include
+the current database password. If the password contains URL-reserved characters,
+use the connection string exactly as supplied/encoded by the Supabase Connect
+panel.
 
 Do not paste this value into chat, source control, documentation, screenshots, or
 workflow logs.
