@@ -89,41 +89,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          source = Path("restored-files/roles.sql")
-          target = Path("restored-files/roles.local.sql")
-          sql = source.read_text(encoding="utf-8")
-
-          pattern = re.compile(
-              r"(?ims)^\s*ALTER\s+ROLE\b.*?\bSET\b.*?;\s*"
-          )
-          matches = pattern.findall(sql)
-          filtered = pattern.sub(
-              "-- skipped in disposable local restore: "
-              "Supabase local owns server-level role settings\n",
-              sql,
-          )
-
-          if re.search(r"(?ims)^\s*ALTER\s+ROLE\b.*?\bSET\b.*?;", filtered):
-              raise SystemExit(
-                  "Server-level ALTER ROLE ... SET statement remained after local filtering."
-              )
-
-          if re.search(r"(?i)\blog_min_messages\b", filtered):
-              raise SystemExit(
-                  "log_min_messages remained in the local roles file after filtering."
-              )
-
-          target.write_text(filtered, encoding="utf-8")
-          print(
-              "Prepared local roles file; skipped "
-              f"{len(matches)} server-level role setting statements."
-          )
-          PY
+          python -m market_forecaster.scripts.prepare_local_restore_roles \
+            restored-files/roles.sql \
+            restored-files/roles.local.sql
 
       - name: Restore encrypted production backup into disposable local Supabase
         shell: bash
