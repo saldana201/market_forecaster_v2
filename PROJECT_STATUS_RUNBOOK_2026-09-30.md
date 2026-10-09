@@ -21,7 +21,7 @@ Current state:
   - provider-side leaked-password protection / Supabase plan decision
   - live Stripe cutover
 
-The product is test-mode billing capable, but it is not yet ready for public live billing/API launch.
+The product is test-mode billing capable and core production hardening is substantially complete. The remaining blockers are the Supabase plan/security decision, live Stripe cutover, and final live regression pass.
 
 ## 1. Application and UX
 
@@ -264,17 +264,25 @@ Completed backup design:
   until measured by a full restore drill.
 - [x] Manual restore/integrity workflow implemented with explicit production-project protection.
 
-Still required before public paid launch:
-- [ ] Configure `MARKET_FORECASTER_SUPABASE_DB_URL` repository secret.
-- [ ] Configure `MARKET_FORECASTER_BACKUP_PASSPHRASE` and retain an external recovery copy.
-- [ ] Run the first encrypted production logical backup.
-- [ ] Run integrity-only restore validation against that backup artifact.
-- [ ] Configure a disposable/non-production restore database and
-  `MARKET_FORECASTER_SUPABASE_RESTORE_DB_URL`.
-- [ ] Perform one full non-production restore drill and record measured RTO.
+Completed recovery validation:
+- [x] `MARKET_FORECASTER_SUPABASE_DB_URL` configured and backup connectivity verified.
+- [x] `MARKET_FORECASTER_BACKUP_PASSPHRASE` configured; encrypted backup workflow succeeded.
+- [x] First encrypted production logical backup completed successfully (workflow run 37965746226).
+- [x] Integrity-only restore validation completed successfully (workflow run 37967481245).
+- [x] Full disposable local Supabase restore drill completed successfully (workflow run 37983341027).
+- [x] Restored and verified:
+  - 2 Auth users
+  - 2 subscriptions
+  - 4 API-key records
+  - 14 READY Forecast Contracts
+- [x] Production `roles.sql` checksum-verified; disposable stack used its own Supabase platform roles.
+- [x] Measured restore verification time: 1 second after disposable Supabase startup.
+- [x] Disposable restore environment destroyed after verification.
+
+Remaining:
 - [ ] Decide whether to upgrade Supabase before public paid launch for provider-managed daily backups and leaked-password protection.
 
-Status: BACKUP/RESTORE AUTOMATION IMPLEMENTED; SECRET ACTIVATION + FULL RESTORE DRILL PENDING.
+Status: BACKUP + INTEGRITY + FULL RECOVERY DRILL COMPLETE FOR CURRENT FREE-PLAN OPERATING MODEL.
 
 ## 10. Monitoring and operations
 
@@ -361,7 +369,7 @@ The project should not be called production-complete until every item below is c
 - [x] Backup plan selected for current Free-plan stage: encrypted daily off-platform logical backup with documented restore procedure.
 - [x] First encrypted production logical backup completed successfully (workflow run 37965746226).
 - [x] Integrity-only restore validation completed successfully (workflow run 37967481245): decryption passed and all SHA-256 checksums passed.
-- [ ] Full restore drill completed. The second local attempt confirmed the first compatibility fix ran, but exposed a multiline `ALTER ROLE ... SET log_min_messages` statement that the line-oriented filter missed. The filter is now statement-oriented and regression-tested for multiline role settings.
+- [x] Full disposable local Supabase restore drill completed successfully (workflow run 37983341027). Auth users, subscriptions, API keys, and all 14 READY Forecast Contracts were restored and verified.
 - [x] Core Azure operational alerts activated and verified.
 - [x] Demo contract refresh / fallback launch check completed through live contract verification plus automated fallback regression.
 - [x] Automated post-deploy production readiness --strict passes.
@@ -390,6 +398,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Rerun the cost-free full local Supabase restore drill against encrypted backup run 37965746226 after the multiline role-setting fix, then record the measured restore time.
-2. Decide whether to upgrade Supabase for provider-managed backups and leaked-password protection before public paid launch.
-3. Complete the live Stripe cutover checklist and one controlled real subscription acceptance transaction.
+1. Decide the Supabase production plan posture before public paid launch: remain temporarily on Free with the validated off-platform backup process, or upgrade for provider-managed daily backups and leaked-password protection.
+2. Complete the live Stripe cutover: live products/prices, live webhook secret, billing mode live, and one controlled real subscription acceptance transaction.
+3. Run the final custom-domain/TLS/auth/Standard/Pro/API regression after live billing is enabled.
