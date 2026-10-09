@@ -96,21 +96,33 @@ jobs:
 
           source = Path("restored-files/roles.sql")
           target = Path("restored-files/roles.local.sql")
-          skipped = 0
-          output = []
+          sql = source.read_text(encoding="utf-8")
 
-          for line in source.read_text(encoding="utf-8").splitlines():
-              if re.match(r'^ALTER ROLE\s+.+\s+SET\s+', line, flags=re.IGNORECASE):
-                  output.append(
-                      "-- skipped in disposable local restore because the local "
-                      "Supabase stack owns server-level role settings: " + line
-                  )
-                  skipped += 1
-              else:
-                  output.append(line)
+          pattern = re.compile(
+              r"(?ims)^\s*ALTER\s+ROLE\b.*?\bSET\b.*?;\s*"
+          )
+          matches = pattern.findall(sql)
+          filtered = pattern.sub(
+              "-- skipped in disposable local restore: "
+              "Supabase local owns server-level role settings\n",
+              sql,
+          )
 
-          target.write_text("\n".join(output) + "\n", encoding="utf-8")
-          print(f"Prepared local roles file; skipped {skipped} server-level role setting statements.")
+          if re.search(r"(?ims)^\s*ALTER\s+ROLE\b.*?\bSET\b.*?;", filtered):
+              raise SystemExit(
+                  "Server-level ALTER ROLE ... SET statement remained after local filtering."
+              )
+
+          if re.search(r"(?i)\blog_min_messages\b", filtered):
+              raise SystemExit(
+                  "log_min_messages remained in the local roles file after filtering."
+              )
+
+          target.write_text(filtered, encoding="utf-8")
+          print(
+              "Prepared local roles file; skipped "
+              f"{len(matches)} server-level role setting statements."
+          )
           PY
 
       - name: Restore encrypted production backup into disposable local Supabase
