@@ -14,14 +14,16 @@ Current state:
 - Stripe Product Catalog shows both active recurring products at the intended sandbox prices:
   - Standard: USD 19.99/month
   - Pro: USD 39.99/month
+- Supabase has been upgraded to Pro.
+- The current Supabase security advisor reports no active security lints.
+- Encrypted off-platform backups and a full disposable restore drill are complete and remain as defense-in-depth alongside the paid Supabase plan.
 - The remaining launch work is concentrated in:
-  - production security / backup hardening
-  - activating and operating the encrypted Supabase logical-backup workflow
-  - completing a non-production restore drill
-  - provider-side leaked-password protection / Supabase plan decision
-  - live Stripe cutover
+  - live Stripe products/prices/webhook configuration
+  - no-charge live billing validation
+  - one controlled real subscription transaction
+  - final live regression pass
 
-The product is test-mode billing capable and core production hardening is substantially complete. The remaining blockers are the Supabase plan/security decision, live Stripe cutover, and final live regression pass.
+The product is test-mode billing capable and core production hardening is substantially complete. The primary remaining blocker is the Stripe live cutover and final acceptance regression.
 
 ## 1. Application and UX
 
@@ -58,13 +60,12 @@ Completed compensating control:
   lowercase, numeric, and symbol characters for new passwords created through
   the application.
 
-Remaining:
-- [ ] Decide whether to upgrade Supabase from Free to a plan that includes
-  leaked-password protection.
-- [ ] Re-run Supabase security advisor after that decision. The current advisor
-  warning is the Free-plan leaked-password-protection limitation.
+Completed:
+- [x] Supabase organization upgraded to Pro.
+- [x] Supabase security advisor re-run after the upgrade.
+- [x] Current Supabase security advisor reports no active security lints.
 
-Status: FUNCTIONALLY COMPLETE; PROVIDER-SIDE PASSWORD BREACH CHECK REMAINS PLAN-DEPENDENT.
+Status: AUTHENTICATION / PERSISTENCE SECURITY HARDENING COMPLETE FOR LAUNCH.
 
 ## 3. Stripe subscriptions
 
@@ -279,10 +280,12 @@ Completed recovery validation:
 - [x] Measured restore verification time: 1 second after disposable Supabase startup.
 - [x] Disposable restore environment destroyed after verification.
 
-Remaining:
-- [ ] Decide whether to upgrade Supabase before public paid launch for provider-managed daily backups and leaked-password protection.
+Completed platform posture:
+- [x] Supabase upgraded to Pro.
+- [x] Keep encrypted daily off-platform logical backups as defense-in-depth.
+- [x] Full recovery drill remains valid and documented.
 
-Status: BACKUP + INTEGRITY + FULL RECOVERY DRILL COMPLETE FOR CURRENT FREE-PLAN OPERATING MODEL.
+Status: BACKUP + INTEGRITY + FULL RECOVERY DRILL COMPLETE; SUPABASE PRO ACTIVE.
 
 ## 10. Monitoring and operations
 
@@ -365,7 +368,7 @@ The project should not be called production-complete until every item below is c
 - [x] API key revocation tested against live API host.
 - [x] Quota exhaustion tested.
 - [x] Automated Stripe Standard/Pro recurring-price catalog validator passes in the strict post-deploy gate.
-- [ ] Supabase leaked-password protection decision addressed. Current Supabase organization is on the Free plan; leaked-password protection is available on Pro and above, so enabling it requires a plan upgrade.
+- [x] Supabase production-plan decision addressed: organization upgraded to Pro and security advisor currently reports no active lints.
 - [x] Backup plan selected for current Free-plan stage: encrypted daily off-platform logical backup with documented restore procedure.
 - [x] First encrypted production logical backup completed successfully (workflow run 37965746226).
 - [x] Integrity-only restore validation completed successfully (workflow run 37967481245): decryption passed and all SHA-256 checksums passed.
@@ -398,6 +401,6 @@ Not required to finish the initial launch:
 
 ## Next three priorities
 
-1. Decide the Supabase production plan posture before public paid launch: remain temporarily on Free with the validated off-platform backup process, or upgrade for provider-managed daily backups and leaked-password protection.
-2. Complete the live Stripe cutover: live products/prices, live webhook secret, billing mode live, and one controlled real subscription acceptance transaction.
-3. Run the final custom-domain/TLS/auth/Standard/Pro/API regression after live billing is enabled.
+1. Finish Stripe live-mode setup: live Standard/Pro recurring prices, live webhook destination/signing secret, live Customer Portal configuration, and live Azure billing settings.
+2. Run the manual no-charge `Validate Stripe live cutover` workflow and require a clean strict catalog/readiness result before entering a real card.
+3. Complete one controlled live subscription transaction, verify webhook-backed entitlement, then run the final custom-domain/TLS/auth/Standard/Pro/API regression.
