@@ -35,4 +35,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build API container
-        run: docker build -f market_forecaster/Dockerfile -t market-forecaster:${{ github.sha }} .
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if docker build -f market_forecaster/Dockerfile -t market-forecaster:${{ github.sha }} .; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Container build attempt $attempt failed; waiting before retry."
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::API container build failed after 3 attempts."
+          exit 1
