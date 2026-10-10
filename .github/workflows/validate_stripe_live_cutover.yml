@@ -1,0 +1,168 @@
+name: Validate Stripe live cutover
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: marketforecaster-stripe-live-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6B5948FF98A541699160F65E91D4A6C4 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5B9FC7F1D0CA4531A6678659F1C575E9 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F60C40A3C2E74BF1BF6E1EE01CCA149C }}
+
+      - name: Resolve deployed Market Forecaster settings
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RESOURCE_GROUP="$(az webapp list --query "[?name=='marketforecaster'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Could not resolve the Market Forecaster Azure resource group."
+            exit 1
+          fi
+
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> "$GITHUB_ENV"
+
+          export_setting() {
+            local name="$1"
+            local value
+
+            value="$(az webapp config appsettings list               --resource-group "$RESOURCE_GROUP"               --name marketforecaster               --query "[?name=='$name'].value | [0]"               -o tsv)"
+
+            if [ -z "$value" ]; then
+              echo "::error::Required Azure setting '$name' is missing or empty."
+              exit 1
+            fi
+
+            case "$name" in
+              MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY|STRIPE_SECRET_KEY)
+                echo "::add-mask::$value"
+                ;;
+            esac
+
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          }
+
+          export_setting MARKET_FORECASTER_SUPABASE_URL
+          export_setting MARKET_FORECASTER_SUPABASE_PUBLISHABLE_KEY
+          export_setting MARKET_FORECASTER_SUPABASE_SERVICE_ROLE_KEY
+          export_setting MARKET_FORECASTER_PUBLIC_URL
+          export_setting MARKET_FORECASTER_BILLING_MODE
+          export_setting SUBSCRIPTIONS_ENABLED
+          export_setting STRIPE_SECRET_KEY
+          export_setting STRIPE_STANDARD_PRICE_ID
+          export_setting STRIPE_PRO_PRICE_ID
+
+          echo "DEMO_MODE_ENABLED=true" >> "$GITHUB_ENV"
+          echo "MULTI_USER_ENABLED=true" >> "$GITHUB_ENV"
+          echo "DATABASE_PERSISTENCE_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SHARED_CONTRACT_STORAGE_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SHARED_AUTHORITY_ENABLED=true" >> "$GITHUB_ENV"
+
+      - name: Enforce live billing safety boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$(printf '%s' "$SUBSCRIPTIONS_ENABLED" | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+            echo "::error::SUBSCRIPTIONS_ENABLED must be true for live cutover."
+            exit 1
+          fi
+
+          if [ "$(printf '%s' "$MARKET_FORECASTER_BILLING_MODE" | tr '[:upper:]' '[:lower:]')" != "live" ]; then
+            echo "::error::MARKET_FORECASTER_BILLING_MODE must be live."
+            exit 1
+          fi
+
+          if [[ "$STRIPE_SECRET_KEY" != sk_live_* ]]; then
+            echo "::error::STRIPE_SECRET_KEY must be a live Stripe secret key."
+            exit 1
+          fi
+
+          if [[ "$MARKET_FORECASTER_PUBLIC_URL" != https://* ]]; then
+            echo "::error::Live billing requires an HTTPS public URL."
+            exit 1
+          fi
+
+          echo "Live billing safety boundary passed."
+
+      - name: Run strict live Stripe catalog readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python -m pip install --disable-pip-version-check --quiet -r requirements.txt
+
+          python -m market_forecaster.scripts.production_readiness             --strict             --require-billing             --compact             > stripe-live-readiness.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("stripe-live-readiness.json").read_text())
+          if not report.get("ready"):
+              raise SystemExit("Market Forecaster live Stripe readiness report is not ready")
+
+          checks = {row["name"]: row for row in report.get("checks", [])}
+          for required in ("stripe_subscriptions", "stripe_price_catalog"):
+              if checks.get(required, {}).get("status") != "PASS":
+                  raise SystemExit(f"Live Stripe readiness check failed: {required}")
+
+          print("Live Stripe subscription configuration and recurring-price catalog passed.")
+          PY
+
+      - name: Verify public application is healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent             --location             --retry 6             --retry-delay 5             --retry-all-errors             --max-time 20             "$MARKET_FORECASTER_PUBLIC_URL/"             > /dev/null
+          echo "Market Forecaster public application is healthy."
+
+      - name: Upload live readiness evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketforecaster-stripe-live-readiness-${{ github.run_id }}
+          path: stripe-live-readiness.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Write cutover validation summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## Market Forecaster Stripe live cutover validation"
+            echo ""
+            echo "- Billing mode: live"
+            echo "- Subscriptions enabled: yes"
+            echo "- Stripe secret key mode: live"
+            echo "- Public return URL: HTTPS"
+            echo "- Live Standard recurring price: validated"
+            echo "- Live Pro recurring price: validated"
+            echo "- Strict production readiness: passed"
+            echo "- Public application health: passed"
+            echo ""
+            echo "This workflow does not create a charge. The next gate is one controlled live Checkout transaction and webhook-backed entitlement verification."
+          } >> "$GITHUB_STEP_SUMMARY"
