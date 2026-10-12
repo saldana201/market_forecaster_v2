@@ -100,6 +100,18 @@ function isoFromUnix(value: unknown): string | null {
   return new Date(seconds * 1000).toISOString();
 }
 
+function subscriptionCurrentPeriodEnd(subscription: any): unknown {
+  // Stripe API versions before 2025-03-31 exposed current_period_end on the
+  // Subscription object. Newer versions expose the billing period on each
+  // Subscription Item. Support both shapes so live webhook version upgrades do
+  // not silently erase the renewal/cancellation date in Market Forecaster.
+  return (
+    subscription?.current_period_end ??
+    subscription?.items?.data?.[0]?.current_period_end ??
+    null
+  );
+}
+
 function stripeId(value: unknown): string | null {
   if (typeof value === "string") {
     const normalized = value.trim();
@@ -255,7 +267,7 @@ Deno.serve(async (req: Request) => {
             p_stripe_customer_id: stripeId(obj.customer),
             p_stripe_subscription_id: stripeId(obj.id),
             p_stripe_price_id: priceId,
-            p_current_period_end: isoFromUnix(obj.current_period_end),
+            p_current_period_end: isoFromUnix(subscriptionCurrentPeriodEnd(obj)),
             p_cancel_at_period_end: Boolean(obj.cancel_at_period_end),
             p_stripe_event_id: eventId,
             p_stripe_event_type: type,
