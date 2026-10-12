@@ -59,3 +59,12 @@ def test_subscription_plan_changes_prefer_configured_price_mapping():
     assert 'Deno.env.get("STRIPE_STANDARD_PRICE_ID")' in source
     assert 'Deno.env.get("STRIPE_PRO_PRICE_ID")' in source
     assert "planFromPriceId(priceId) || normalizePlan(obj.metadata?.plan)" in source
+
+
+def test_subscription_period_end_supports_legacy_and_current_stripe_shapes():
+    source = WEBHOOK.read_text(encoding="utf-8")
+
+    assert "function subscriptionCurrentPeriodEnd" in source
+    assert "subscription?.current_period_end" in source
+    assert "subscription?.items?.data?.[0]?.current_period_end" in source
+    assert "isoFromUnix(subscriptionCurrentPeriodEnd(obj))" in source
