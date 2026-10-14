@@ -23,7 +23,7 @@ Current state:
   - one controlled real subscription transaction
   - final live regression pass
 
-The product is test-mode billing capable and core production hardening is substantially complete. The primary remaining blocker is the Stripe live cutover and final acceptance regression.
+The product is live-billing cutover capable and core production hardening is substantially complete. The primary remaining blocker is completion of the Stripe live Price-ID validation and final acceptance regression.
 
 ## 1. Application and UX
 
@@ -88,10 +88,17 @@ Implemented:
 - [x] Duplicate-subscription protection user-tested successfully.
 - [x] Stripe Product Catalog contains active recurring Standard and Pro products.
 
-Current sandbox prices:
+Current sandbox prices used for earlier acceptance:
 
 - Standard: USD 19.99/month
 - Pro: USD 39.99/month
+
+Current live launch prices:
+
+- Standard: USD 14.99/month
+- Pro: USD 29.99/month
+- Development 1 Hour: USD 100.00 one-time/non-recurring; separate from
+  subscription entitlement and not mapped to Standard/Pro billing variables.
 
 Completed:
 - [x] Automated no-charge Stripe recurring-price catalog validation passes for
@@ -99,7 +106,9 @@ Completed:
 
 Remaining:
 - [ ] Keep billing mode in test until live-cutover checklist passes.
-- [ ] At live cutover, create/configure live Price IDs and live webhook signing secret.
+- [x] Live recurring Standard/Pro products created and live webhook signing secret configured.
+- [ ] Replace the accidentally configured `prod_` Product IDs with the corresponding
+  live `price_` recurring Price IDs in Azure and Supabase, then rerun catalog validation.
 - [ ] Run one controlled live end-to-end acceptance transaction before public launch.
 
 Status: SANDBOX FLOW COMPLETE; automated catalog validation and live cutover remain.
