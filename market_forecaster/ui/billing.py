@@ -3,8 +3,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from market_forecaster.auth.factory import get_auth_provider
+from market_forecaster.auth.provider import AuthProviderError
+from market_forecaster.auth.session import (
+    AUTH_SESSION_KEY,
+    suppress_requested_plan_restore,
+)
 from market_forecaster.billing.stripe_client import BillingError
-from market_forecaster.core.session_identity import resolve_identity
+from market_forecaster.core.session_identity import AppIdentity, resolve_identity
 from market_forecaster.services.subscriptions import (
     ENTITLED_STATUSES,
     PAID_PLANS,
@@ -58,9 +64,55 @@ def _subscription_sync_details(subscription: dict | None) -> dict[str, str]:
     }
 
 
-def render_plan_selector(*, title: str = "Choose your subscription tier") -> str:
-    """Show and persist an explicit Standard/Pro choice without tying it to auth state."""
+def _active_plan_choice(identity: AppIdentity) -> str:
+    active = normalize_requested_plan(identity.plan)
+    return (active or "standard").title()
+
+
+def _clear_upgrade_choice_state(state, identity: AppIdentity) -> str:
+    """Clear upgrade intent and queue the selector back to the active plan."""
+    target = _active_plan_choice(identity)
+    state.pop("requested_plan", None)
+    state.pop("billing_checkout_url", None)
+    state.pop("billing_checkout_plan", None)
+    state.pop("billing_portal_url", None)
+    state["account_plan_choice_pending"] = target
+    state["_account_plan_choice_seed"] = target.lower()
+    suppress_requested_plan_restore(state, identity.auth_subject)
+    return target
+
+
+def _clear_persisted_requested_plan() -> bool:
+    auth = st.session_state.get(AUTH_SESSION_KEY) or {}
+    token = auth.get("access_token") if isinstance(auth, dict) else None
+    if not token:
+        return False
+
+    try:
+        get_auth_provider().update_requested_plan(str(token), None)
+        return True
+    except AuthProviderError:
+        return False
+
+
+def _clear_upgrade_choice(identity: AppIdentity) -> str:
+    target = _clear_upgrade_choice_state(st.session_state, identity)
+    if not _clear_persisted_requested_plan():
+        st.session_state["billing_upgrade_clear_warning"] = (
+            "The upgrade choice was cleared for this session, but the saved signup "
+            "preference could not be updated. It may reappear after a future sign-in."
+        )
+    return target
+
+
+def render_plan_selector(
+    *,
+    title: str = "Choose your subscription tier",
+    active_plan: str | None = None,
+) -> str:
+    """Show a Standard/Pro choice, anchored to the active plan when one exists."""
     requested = normalize_requested_plan(st.session_state.get("requested_plan"))
+    active = normalize_requested_plan(active_plan)
     choice_key = "account_plan_choice"
     seed_key = "_account_plan_choice_seed"
 
@@ -75,11 +127,12 @@ def render_plan_selector(*, title: str = "Choose your subscription tier") -> str
     # Seed the visible control from the plan selected on the Demo Plans page.
     # This occurs before the widget is instantiated, so it stays within
     # Streamlit's widget-state rules.
-    if requested and st.session_state.get(seed_key) != requested:
-        st.session_state[choice_key] = requested.title()
-        st.session_state[seed_key] = requested
+    desired = requested or active
+    if desired and st.session_state.get(seed_key) != desired:
+        st.session_state[choice_key] = desired.title()
+        st.session_state[seed_key] = desired
     elif st.session_state.get(choice_key) not in PLAN_OPTIONS:
-        initial = (requested or "standard").title()
+        initial = (desired or "standard").title()
         st.session_state[choice_key] = initial
         st.session_state[seed_key] = initial.lower()
 
@@ -93,13 +146,15 @@ def render_plan_selector(*, title: str = "Choose your subscription tier") -> str
     )
     selected = normalize_requested_plan(choice or st.session_state.get(choice_key)) or "standard"
 
-    if previous != selected:
+    if active and selected == active:
+        st.session_state.pop("requested_plan", None)
+    else:
         st.session_state["requested_plan"] = selected
+
+    if previous != normalize_requested_plan(st.session_state.get("requested_plan")):
         st.session_state[seed_key] = selected
         st.session_state.pop("billing_checkout_url", None)
         st.session_state.pop("billing_checkout_plan", None)
-    else:
-        st.session_state["requested_plan"] = selected
 
     standard_col, pro_col = st.columns(2)
     with standard_col:
@@ -109,10 +164,13 @@ def render_plan_selector(*, title: str = "Choose your subscription tier") -> str
         st.markdown("**Pro**")
         st.caption("Everything in Standard · Research Lab · advanced diagnostics · API access")
 
-    st.info(
-        f"Selected plan: **{selected.title()}**. "
-        "This choice stays with you through sign-in or account creation."
-    )
+    if active and selected == active:
+        st.info(f"Selected tier: **{selected.title()}** — your current active subscription.")
+    else:
+        st.info(
+            f"Selected plan: **{selected.title()}**. "
+            "This choice stays with you through sign-in or account creation."
+        )
     return selected
 
 
@@ -183,19 +241,21 @@ def render_billing_return_notice() -> None:
 
 
 def render_upgrade_handoff() -> None:
-    """Keep a Demo plan choice visible after the user authenticates."""
+    """Keep a deliberate plan upgrade visible after the user authenticates."""
     identity = resolve_identity(st.session_state)
     if not identity.authenticated:
         return
+
+    warning = st.session_state.pop("billing_upgrade_clear_warning", None)
+    if warning:
+        st.warning(str(warning))
 
     requested = normalize_requested_plan(st.session_state.get("requested_plan"))
     if requested is None:
         return
 
     if requested_plan_is_satisfied(identity, requested):
-        st.session_state.pop("requested_plan", None)
-        st.session_state.pop("billing_checkout_url", None)
-        st.session_state.pop("billing_checkout_plan", None)
+        _clear_upgrade_choice(identity)
         st.success(f"{identity.plan.title()} access is active on this account.")
         return
 
@@ -292,9 +352,7 @@ def render_upgrade_handoff() -> None:
             key="clear_requested_plan",
             use_container_width=True,
         ):
-            st.session_state.pop("requested_plan", None)
-            st.session_state.pop("billing_checkout_url", None)
-            st.session_state.pop("billing_checkout_plan", None)
+            _clear_upgrade_choice(identity)
             st.rerun()
 
 
@@ -356,7 +414,12 @@ def render_billing_panel() -> None:
         with c2:
             st.metric("Billing status", _status_label(identity.subscription_status))
 
-        selected_plan = render_plan_selector()
+        active_selector_plan = (
+            identity.plan
+            if identity.subscription_status in ENTITLED_STATUSES
+            else None
+        )
+        selected_plan = render_plan_selector(active_plan=active_selector_plan)
 
         if not ready:
             st.info(

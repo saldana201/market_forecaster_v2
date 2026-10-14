@@ -21,7 +21,17 @@ from market_forecaster.core.session_identity import (
 
 AUTH_SESSION_KEY = "auth_session"
 AUTH_PROFILE_KEY = "auth_profile"
+REQUESTED_PLAN_SUPPRESSED_FOR_KEY = "_requested_plan_suppressed_for"
 
+
+
+def suppress_requested_plan_restore(
+    state: MutableMapping,
+    subject: str | None,
+) -> None:
+    normalized = str(subject or "").strip()
+    if normalized:
+        state[REQUESTED_PLAN_SUPPRESSED_FOR_KEY] = normalized
 
 
 def _restore_requested_plan(
@@ -30,6 +40,9 @@ def _restore_requested_plan(
     *,
     force: bool = False,
 ) -> None:
+    if state.get(REQUESTED_PLAN_SUPPRESSED_FOR_KEY) == user.subject:
+        return
+
     requested = str(user.requested_plan or "").strip().lower()
     if requested not in {"standard", "pro"}:
         return
@@ -171,8 +184,14 @@ def clear_authenticated_session(state: MutableMapping) -> AppIdentity:
     state.pop("account_default_ticker", None)
     state.pop("account_timezone", None)
     state.pop("simple_forecast_contract", None)
+    state.pop("requested_plan", None)
+    state.pop("account_plan_choice", None)
+    state.pop("account_plan_choice_pending", None)
+    state.pop("_account_plan_choice_seed", None)
+    state.pop(REQUESTED_PLAN_SUPPRESSED_FOR_KEY, None)
     state.pop("billing_checkout_url", None)
     state.pop("billing_checkout_plan", None)
+    state.pop("billing_portal_url", None)
     state.pop("_browser_session_handle", None)
     state.pop("_browser_session_refresh_hash", None)
     identity = new_demo_identity_for_session(str(state[DEMO_SESSION_KEY]["session_id"]))

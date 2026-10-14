@@ -214,6 +214,21 @@ class SupabaseAuthProvider:
         )
         return self._user(result)
 
+    def update_requested_plan(
+        self,
+        access_token: str,
+        requested_plan: str | None,
+    ) -> AuthUser:
+        normalized = str(requested_plan or "").strip().lower()
+        value = normalized if normalized in {"standard", "pro"} else None
+        result = self._request(
+            "/auth/v1/user",
+            method="PUT",
+            payload={"data": {"requested_plan": value}},
+            access_token=access_token,
+        )
+        return self._user(result)
+
     def logout(self, access_token: str) -> None:
         self._request("/auth/v1/logout", method="POST", access_token=access_token)
 

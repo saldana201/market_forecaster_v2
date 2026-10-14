@@ -79,6 +79,13 @@ class AuthProvider(Protocol):
     def update_password(self, access_token: str, new_password: str) -> AuthUser:
         ...
 
+    def update_requested_plan(
+        self,
+        access_token: str,
+        requested_plan: str | None,
+    ) -> AuthUser:
+        ...
+
     def logout(self, access_token: str) -> None:
         ...
 
