@@ -48,9 +48,9 @@ def subscription_configuration_diagnostics() -> list[dict]:
     """Return a secret-safe checklist for subscription activation."""
     secret = _stripe_secret()
     mode = billing_mode()
-    if secret.startswith("sk_test_"):
+    if secret.startswith(("sk_test_", "rk_test_")):
         stripe_mode = "test"
-    elif secret.startswith("sk_live_"):
+    elif secret.startswith(("sk_live_", "rk_live_")):
         stripe_mode = "live"
     elif secret:
         stripe_mode = "configured"
