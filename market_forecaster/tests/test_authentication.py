@@ -11,9 +11,12 @@ from market_forecaster.auth.provider import AuthResult, AuthTokens, AuthUser, In
 from market_forecaster.auth.supabase import SupabaseAuthProvider
 from market_forecaster.auth.session import (
     AUTH_SESSION_KEY,
+    REQUESTED_PLAN_SUPPRESSED_FOR_KEY,
+    _restore_requested_plan,
     clear_authenticated_session,
     establish_authenticated_session,
     stable_internal_user_id,
+    suppress_requested_plan_restore,
     sync_authenticated_identity,
 )
 from market_forecaster.core.session_identity import resolve_identity
@@ -63,6 +66,19 @@ class FakeAuthProvider:
 
     def update_password(self, access_token: str, new_password: str) -> AuthUser:
         return AuthUser("subject-login", "test@example.com", "Test User", True)
+
+    def update_requested_plan(
+        self,
+        access_token: str,
+        requested_plan: str | None,
+    ) -> AuthUser:
+        return AuthUser(
+            "subject-login",
+            "test@example.com",
+            "Test User",
+            True,
+            requested_plan=requested_plan,
+        )
 
     def logout(self, access_token: str) -> None:
         return None
@@ -465,6 +481,99 @@ def test_token_sync_does_not_override_in_session_plan_choice():
 
     assert state["requested_plan"] == "standard"
     assert "account_plan_choice_pending" not in state
+
+
+
+def test_requested_plan_suppression_blocks_stale_auth_metadata_restore():
+    state = {}
+    user = AuthUser(
+        "subject-pro",
+        "pro@example.com",
+        "Pro User",
+        True,
+        requested_plan="pro",
+    )
+
+    suppress_requested_plan_restore(state, user.subject)
+    _restore_requested_plan(state, user, force=True)
+
+    assert "requested_plan" not in state
+    assert "account_plan_choice_pending" not in state
+    assert state[REQUESTED_PLAN_SUPPRESSED_FOR_KEY] == "subject-pro"
+
+
+def test_logout_clears_upgrade_selection_state():
+    state = {}
+    establish_authenticated_session(
+        state,
+        AuthResult(AuthUser("subject-a"), AuthTokens("good-a")),
+        provider_name="fake",
+    )
+    state["requested_plan"] = "pro"
+    state["account_plan_choice"] = "Pro"
+    state["account_plan_choice_pending"] = "Pro"
+    state["_account_plan_choice_seed"] = "pro"
+    state[REQUESTED_PLAN_SUPPRESSED_FOR_KEY] = "subject-a"
+    state["billing_portal_url"] = "https://billing.example"
+
+    clear_authenticated_session(state)
+
+    for key in (
+        "requested_plan",
+        "account_plan_choice",
+        "account_plan_choice_pending",
+        "_account_plan_choice_seed",
+        REQUESTED_PLAN_SUPPRESSED_FOR_KEY,
+        "billing_portal_url",
+    ):
+        assert key not in state
+
+
+def test_supabase_update_requested_plan_clears_user_metadata(monkeypatch):
+    provider = SupabaseAuthProvider(
+        "https://example.supabase.co",
+        "sb_publishable_test",
+    )
+    captured = {}
+
+    payload = {
+        "id": "66666666-6666-4666-8666-666666666666",
+        "email": "person@example.com",
+        "user_metadata": {"display_name": "Person", "requested_plan": None},
+        "email_confirmed_at": "2026-10-14T07:00:00Z",
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            import json
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        import json
+        captured["url"] = req.full_url
+        captured["method"] = req.method
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["authorization"] = req.headers.get("Authorization")
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "market_forecaster.auth.supabase.request.urlopen",
+        fake_urlopen,
+    )
+
+    user = provider.update_requested_plan("access-token", None)
+
+    assert captured["url"].endswith("/auth/v1/user")
+    assert captured["method"] == "PUT"
+    assert captured["body"] == {"data": {"requested_plan": None}}
+    assert captured["authorization"] == "Bearer access-token"
+    assert user.requested_plan is None
 
 
 def test_supabase_resend_confirmation_uses_non_authenticated_signup_endpoint(monkeypatch):
