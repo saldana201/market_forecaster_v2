@@ -94,8 +94,8 @@ jobs:
             exit 1
           fi
 
-          if [[ "$STRIPE_SECRET_KEY" != sk_live_* ]]; then
-            echo "::error::STRIPE_SECRET_KEY must be a live Stripe secret key."
+          if [[ "$STRIPE_SECRET_KEY" != sk_live_* && "$STRIPE_SECRET_KEY" != rk_live_* ]]; then
+            echo "::error::STRIPE_SECRET_KEY must be a live Stripe server key (sk_live_ or rk_live_)."
             exit 1
           fi
 
@@ -157,7 +157,7 @@ jobs:
             echo ""
             echo "- Billing mode: live"
             echo "- Subscriptions enabled: yes"
-            echo "- Stripe secret key mode: live"
+            echo "- Stripe server API key mode: live"
             echo "- Public return URL: HTTPS"
             echo "- Live Standard recurring price: validated"
             echo "- Live Pro recurring price: validated"
