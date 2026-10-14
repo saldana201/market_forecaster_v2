@@ -59,8 +59,8 @@ def test_deployment_preflight_does_not_print_setting_values():
 def test_billing_preflight_enforces_test_live_secret_boundaries():
     text = _workflow_text()
 
-    assert "Test billing mode requires an sk_test_ Stripe secret key." in text
-    assert "Live billing mode requires an sk_live_ Stripe secret key." in text
+    assert "sk_test_ or rk_test_" in text
+    assert "sk_live_ or rk_live_" in text
     assert "Live billing mode requires an HTTPS public return URL." in text
     assert "MARKET_FORECASTER_BILLING_MODE must be test or live." in text
     assert "unset stripe_secret" in text
