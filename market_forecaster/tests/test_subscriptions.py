@@ -174,6 +174,26 @@ def test_billing_mode_rejects_live_key_in_test_mode(monkeypatch):
     assert "do-not-charge" not in reason
 
 
+def test_live_billing_accepts_restricted_api_key(monkeypatch):
+    monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_ENABLED", True)
+    monkeypatch.setattr(subscriptions, "DATABASE_PERSISTENCE_ENABLED", True)
+    monkeypatch.setenv("MARKET_FORECASTER_BILLING_MODE", "live")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "rk_live_do-not-expose-this-value")
+    monkeypatch.setenv("STRIPE_STANDARD_PRICE_ID", "price_standard")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_pro")
+    monkeypatch.setenv(
+        "MARKET_FORECASTER_PUBLIC_URL",
+        "https://marketforecaster.oneeightaisystems.com",
+    )
+
+    rows = subscription_configuration_diagnostics()
+    by_name = {row["name"]: row for row in rows}
+
+    assert by_name["Stripe secret key"]["ready"] is True
+    assert by_name["Stripe secret key"]["detail"] == "live"
+    assert "do-not-expose" not in str(rows)
+
+
 def test_live_billing_requires_https_public_url(monkeypatch):
     monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_ENABLED", True)
     monkeypatch.setattr(subscriptions, "DATABASE_PERSISTENCE_ENABLED", True)
