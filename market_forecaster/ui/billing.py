@@ -69,16 +69,16 @@ def _active_plan_choice(identity: AppIdentity) -> str:
     return (active or "standard").title()
 
 
-def _clear_upgrade_choice_state(identity: AppIdentity) -> str:
+def _clear_upgrade_choice_state(state, identity: AppIdentity) -> str:
     """Clear upgrade intent and queue the selector back to the active plan."""
     target = _active_plan_choice(identity)
-    st.session_state.pop("requested_plan", None)
-    st.session_state.pop("billing_checkout_url", None)
-    st.session_state.pop("billing_checkout_plan", None)
-    st.session_state.pop("billing_portal_url", None)
-    st.session_state["account_plan_choice_pending"] = target
-    st.session_state["_account_plan_choice_seed"] = target.lower()
-    suppress_requested_plan_restore(st.session_state, identity.auth_subject)
+    state.pop("requested_plan", None)
+    state.pop("billing_checkout_url", None)
+    state.pop("billing_checkout_plan", None)
+    state.pop("billing_portal_url", None)
+    state["account_plan_choice_pending"] = target
+    state["_account_plan_choice_seed"] = target.lower()
+    suppress_requested_plan_restore(state, identity.auth_subject)
     return target
 
 
@@ -96,7 +96,7 @@ def _clear_persisted_requested_plan() -> bool:
 
 
 def _clear_upgrade_choice(identity: AppIdentity) -> str:
-    target = _clear_upgrade_choice_state(identity)
+    target = _clear_upgrade_choice_state(st.session_state, identity)
     if not _clear_persisted_requested_plan():
         st.session_state["billing_upgrade_clear_warning"] = (
             "The upgrade choice was cleared for this session, but the saved signup "
