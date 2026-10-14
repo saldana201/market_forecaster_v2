@@ -308,8 +308,9 @@ def _render_billing_activation_checklist() -> None:
             )
 
         st.caption(
-            "Billing mode is an explicit safety boundary: test mode requires an sk_test_ key; "
-            "live mode requires an sk_live_ key and an HTTPS public return URL."
+            "Billing mode is an explicit safety boundary: test mode requires a Stripe "
+            "test server key (sk_test_ or rk_test_); live mode requires a Stripe live "
+            "server key (sk_live_ or rk_live_) and an HTTPS public return URL."
         )
 
         if st.button(
