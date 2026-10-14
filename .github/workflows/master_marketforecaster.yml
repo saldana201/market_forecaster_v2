@@ -186,14 +186,14 @@ jobs:
 
             case "$billing_mode" in
               test)
-                if [[ "$stripe_secret" != sk_test_* ]]; then
-                  echo "::error::Test billing mode requires an sk_test_ Stripe secret key."
+                if [[ "$stripe_secret" != sk_test_* && "$stripe_secret" != rk_test_* ]]; then
+                  echo "::error::Test billing mode requires a Stripe test server key (sk_test_ or rk_test_)."
                   exit 1
                 fi
                 ;;
               live)
-                if [[ "$stripe_secret" != sk_live_* ]]; then
-                  echo "::error::Live billing mode requires an sk_live_ Stripe secret key."
+                if [[ "$stripe_secret" != sk_live_* && "$stripe_secret" != rk_live_* ]]; then
+                  echo "::error::Live billing mode requires a Stripe live server key (sk_live_ or rk_live_)."
                   exit 1
                 fi
                 if [[ "$public_url" != https://* ]]; then
