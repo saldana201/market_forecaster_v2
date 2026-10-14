@@ -28,6 +28,7 @@ def test_live_stripe_validation_requires_live_mode_and_live_secret():
 
     assert "MARKET_FORECASTER_BILLING_MODE must be live" in text
     assert "sk_live_*" in text
+    assert "rk_live_*" in text
     assert "SUBSCRIPTIONS_ENABLED must be true" in text
     assert "Live billing requires an HTTPS public URL" in text
 
