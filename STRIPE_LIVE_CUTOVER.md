@@ -16,10 +16,12 @@ Before changing application settings:
 
 In Stripe **Live mode**, create or confirm:
 
-- Market Forecaster Standard — USD 19.99/month, recurring monthly.
-- Market Forecaster Pro — USD 39.99/month, recurring monthly.
+- Market Forecaster Standard — USD 14.99/month, recurring monthly.
+- Market Forecaster Pro — USD 29.99/month, recurring monthly.
+- Development 1 Hour — USD 100.00, one-time/non-recurring. This is a separate
+  services product and is not part of Market Forecaster subscription entitlement.
 
-Save the two live Price IDs:
+Save the two live **Price IDs** (they begin with `price_`):
 
 - live Standard Price ID
 - live Pro Price ID
@@ -67,11 +69,8 @@ Update the deployed `stripe-webhook` Edge Function environment together:
 The function does not need the Stripe account secret key. It verifies Stripe
 signatures and maps the live Price IDs back to Market Forecaster plans.
 
-After the environment values are updated, redeploy:
-
-    supabase functions deploy stripe-webhook --no-verify-jwt
-
-At this point, the webhook is authoritative for **live** Stripe events. The old
+Supabase Edge Function secret changes are available without a function
+redeployment. At this point, the webhook is authoritative for **live** Stripe events. The old
 test-mode destination will no longer validate against the live signing secret.
 
 ## 6. Switch Azure App Service billing settings
@@ -79,7 +78,7 @@ test-mode destination will no longer validate against the live signing secret.
 Update the Market Forecaster App Service settings together:
 
     MARKET_FORECASTER_BILLING_MODE=live
-    STRIPE_SECRET_KEY=sk_live_...
+    STRIPE_SECRET_KEY=<live Stripe server key: sk_live_... or rk_live_...>
     STRIPE_STANDARD_PRICE_ID=<live Standard Price ID>
     STRIPE_PRO_PRICE_ID=<live Pro Price ID>
     MARKET_FORECASTER_PUBLIC_URL=https://marketforecaster.oneeightaisystems.com
@@ -98,7 +97,7 @@ Before entering a real card:
    **Validate Stripe live cutover**
 2. It must pass:
    - live billing-mode safety boundary
-   - live `sk_live_` key check
+   - live Stripe server-key check (`sk_live_` or `rk_live_`)
    - HTTPS return URL check
    - Standard live recurring-price validation
    - Pro live recurring-price validation
@@ -191,7 +190,7 @@ application rollback.
 Never paste any of the following into chat, issues, screenshots, source control,
 or documentation:
 
-- `sk_live_...`
+- `sk_live_...` or `rk_live_...`
 - webhook signing secrets
 - Supabase service-role key
 - database passwords
